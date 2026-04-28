@@ -44,10 +44,12 @@ import { generateHashedPassword } from "./utils";
 
 // biome-ignore lint: Forbidden non-null assertion.
 const client = postgres(process.env.POSTGRES_URL!, {
-  ssl: "require",
-  connect_timeout: 30,
-  idle_timeout: 20,
-  max_lifetime: 60 * 10,
+  ssl: process.env.NODE_ENV === "production" ? "require" : "prefer",
+  connect_timeout: 60,
+  idle_timeout: 30,
+  max_lifetime: 60 * 30,
+  max: 10,
+  prepare: false,
 });
 const db = drizzle(client);
 type ChatVisibility = "public" | "private";
