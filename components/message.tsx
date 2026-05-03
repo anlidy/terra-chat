@@ -1,5 +1,6 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
+import Image from "next/image";
 import { useState } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
@@ -16,6 +17,7 @@ import {
   ToolInput,
   ToolOutput,
 } from "./elements/tool";
+import { ImageLightbox } from "./image-lightbox";
 import { MessageActions } from "./message-actions";
 import { MessageEditor } from "./message-editor";
 import { MessageReasoning } from "./message-reasoning";
@@ -44,6 +46,7 @@ const PurePreviewMessage = ({
   requiresScrollPadding: boolean;
 }) => {
   const [mode, setMode] = useState<"view" | "edit">("view");
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   const attachmentsFromMessage = message.parts.filter(
     (part) => part.type === "file"
@@ -340,6 +343,57 @@ const PurePreviewMessage = ({
               );
             }
 
+            if (type === "tool-generateImage") {
+              const { toolCallId, state } = part;
+
+              return (
+                <Tool defaultOpen={true} key={toolCallId}>
+                  <ToolHeader state={state} type="tool-generateImage" />
+                  <ToolContent>
+                    {state === "input-available" && (
+                      <ToolInput input={part.input} />
+                    )}
+                    {state === "output-available" && (
+                      <ToolOutput
+                        errorText={undefined}
+                        output={
+                          part.output && "error" in part.output ? (
+                            <div className="rounded border border-red-200 bg-red-50 p-3 text-red-500 dark:bg-red-950/50">
+                              {String(part.output.error)}
+                            </div>
+                          ) : part.output?.url ? (
+                            <Image
+                              alt={part.output.prompt ?? "Generated image"}
+                              className="cursor-pointer rounded-lg"
+                              height={
+                                (
+                                  part.output as { size?: string }
+                                ).size?.startsWith("768")
+                                  ? 768
+                                  : 576
+                              }
+                              onClick={() =>
+                                setLightboxImage(part.output?.url ?? null)
+                              }
+                              src={part.output.url}
+                              unoptimized
+                              width={
+                                (
+                                  part.output as { size?: string }
+                                ).size?.startsWith("1024")
+                                  ? 1024
+                                  : 576
+                              }
+                            />
+                          ) : null
+                        }
+                      />
+                    )}
+                  </ToolContent>
+                </Tool>
+              );
+            }
+
             return null;
           })}
 
@@ -355,6 +409,14 @@ const PurePreviewMessage = ({
           )}
         </div>
       </div>
+
+      {lightboxImage && (
+        <ImageLightbox
+          alt="Generated image"
+          onClose={() => setLightboxImage(null)}
+          src={lightboxImage}
+        />
+      )}
     </div>
   );
 };

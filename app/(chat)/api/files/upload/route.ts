@@ -9,6 +9,9 @@ import { ingest } from "@/lib/rag/ingest";
 const DOCUMENT_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
 ];
 
 const FileSchema = z.object({
@@ -20,7 +23,10 @@ const FileSchema = z.object({
     .refine(
       (file) =>
         ["image/jpeg", "image/png", ...DOCUMENT_TYPES].includes(file.type),
-      { message: "File type should be JPEG, PNG, PDF, or DOCX" }
+      {
+        message:
+          "File type should be JPEG, PNG, GIF, WebP, PDF, DOCX, XLSX, PPTX, or TXT",
+      }
     ),
 });
 
@@ -76,7 +82,17 @@ export async function POST(request: Request) {
     const isDocument = DOCUMENT_TYPES.includes(file.type);
 
     if (isDocument && chatId) {
-      const fileType = file.type.includes("pdf") ? "pdf" : "docx";
+      const fileTypeMap: Record<string, string> = {
+        "application/pdf": "pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+          "docx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+          "xlsx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+          "pptx",
+        "text/plain": "txt",
+      };
+      const fileType = fileTypeMap[file.type];
 
       // Validate chat exists and user owns it
       const existingChat = await getChatById({ id: chatId });

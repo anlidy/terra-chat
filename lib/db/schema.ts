@@ -195,7 +195,7 @@ export const customProvider = pgTable("CustomProvider", {
   name: varchar("name", { length: 100 }).notNull(),
   baseUrl: text("baseUrl").notNull(),
   apiKey: text("apiKey").notNull(),
-  format: varchar("format", { enum: ["openai", "anthropic"] })
+  format: varchar("format", { enum: ["openai", "anthropic", "alibaba"] })
     .notNull()
     .default("openai"),
   isEnabled: boolean("isEnabled").notNull().default(true),

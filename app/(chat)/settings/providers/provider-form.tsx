@@ -20,7 +20,7 @@ type Provider = {
   name: string;
   baseUrl: string;
   apiKey: string;
-  format: "openai" | "anthropic";
+  format: "openai" | "anthropic" | "alibaba";
   isEnabled: boolean;
 };
 
@@ -38,7 +38,7 @@ export function ProviderForm({
   const [name, setName] = useState(provider?.name ?? "");
   const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
-  const [format, setFormat] = useState<"openai" | "anthropic">(
+  const [format, setFormat] = useState<"openai" | "anthropic" | "alibaba">(
     provider?.format ?? "openai"
   );
   const [saving, setSaving] = useState(false);
@@ -218,12 +218,13 @@ export function ProviderForm({
             className="w-full cursor-pointer rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none"
             id="format"
             onChange={(e) =>
-              setFormat(e.target.value as "openai" | "anthropic")
+              setFormat(e.target.value as "openai" | "anthropic" | "alibaba")
             }
             value={format}
           >
             <option value="openai">OpenAI Compatible</option>
             <option value="anthropic">Anthropic Compatible</option>
+            <option value="alibaba">Alibaba (DashScope)</option>
           </select>
         </div>
 

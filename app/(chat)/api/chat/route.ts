@@ -14,6 +14,7 @@ import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
+import { downloadAndEncodeImage } from "@/lib/ai/image-utils";
 import { promptBuilder } from "@/lib/ai/prompts/builder";
 import {
   buildDocsStatusMessage,
@@ -24,6 +25,7 @@ import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/artifacts/create-document";
 import { requestSuggestions } from "@/lib/ai/tools/artifacts/request-suggestions";
 import { updateDocument } from "@/lib/ai/tools/artifacts/update-document";
+import { generateImage } from "@/lib/ai/tools/generate-image";
 import {
   getDocsStatus,
   getDocumentsStatus,
@@ -127,7 +129,10 @@ export async function POST(request: Request) {
     const isThinkingMode = mode === "thinking";
 
     // Validate provider supports thinking mode
-    if (isThinkingMode && !["anthropic", "openai"].includes(provider.format)) {
+    if (
+      isThinkingMode &&
+      !["anthropic", "openai", "alibaba"].includes(provider.format)
+    ) {
       return Response.json(
         { error: "This provider doesn't support thinking mode" },
         { status: 400 }
@@ -201,7 +206,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const IMAGE_TYPES = ["image/jpeg", "image/png"];
+    const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
     const filteredUIMessages: ChatMessage[] = uiMessages.map((msg) => {
       if (msg.role !== "user") {
         return msg;
@@ -215,7 +220,39 @@ export async function POST(request: Request) {
       });
       return { ...msg, parts };
     });
-    const modelMessages = await convertToModelMessages(filteredUIMessages);
+
+    // Preprocess image file parts: download, resize, and encode as base64 data URLs
+    // so the model provider can correctly handle them in image_url content blocks.
+    const processedMessages: ChatMessage[] = await Promise.all(
+      filteredUIMessages.map(async (msg) => {
+        if (msg.role !== "user") {
+          return msg;
+        }
+        const parts = await Promise.all(
+          msg.parts.map(async (p) => {
+            if (
+              p.type === "file" &&
+              IMAGE_TYPES.includes(p.mediaType ?? "") &&
+              p.url
+            ) {
+              try {
+                const dataUrl = await downloadAndEncodeImage(
+                  p.url,
+                  p.mediaType ?? "image/jpeg"
+                );
+                return { ...p, url: dataUrl };
+              } catch (error) {
+                console.error("Failed to preprocess image:", error);
+                throw new ChatbotError("bad_request:api");
+              }
+            }
+            return p;
+          })
+        );
+        return { ...msg, parts };
+      })
+    );
+    const modelMessages = await convertToModelMessages(processedMessages);
 
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
@@ -238,6 +275,7 @@ export async function POST(request: Request) {
               };
             }
           | { openai: { thinking: { type: "enabled" } } }
+          | { alibaba: { enableThinking: true; thinkingBudget: number } }
           | undefined;
         if (isThinkingMode) {
           if (provider.format === "anthropic") {
@@ -250,6 +288,13 @@ export async function POST(request: Request) {
             providerOptions = {
               openai: {
                 thinking: { type: "enabled" as const },
+              },
+            };
+          } else if (provider.format === "alibaba") {
+            providerOptions = {
+              alibaba: {
+                enableThinking: true as const,
+                thinkingBudget: 81_920,
               },
             };
           }
@@ -322,6 +367,7 @@ export async function POST(request: Request) {
           "requestSuggestions",
           "retrieveDocuments",
           "getDocumentsStatus",
+          "generateImage",
         ];
 
         // Construct final messages: static prompt → history → dynamic messages → current message
@@ -361,6 +407,7 @@ export async function POST(request: Request) {
             requestSuggestions: requestSuggestions({ session, dataStream }),
             retrieveDocuments: retrieveDocuments({ chatId: id }),
             getDocumentsStatus: getDocumentsStatus({ chatId: id }),
+            generateImage,
           },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,

@@ -21,7 +21,7 @@ type Provider = {
   name: string;
   baseUrl: string;
   apiKey: string;
-  format: "openai" | "anthropic";
+  format: "openai" | "anthropic" | "alibaba";
   isEnabled: boolean;
   modelCount: number;
   models: Model[];

@@ -19,6 +19,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@ai-sdk/alibaba": "^1.0.21",
     "@ai-sdk/anthropic": "^3.0.66",
     "@ai-sdk/openai": "^3.0.50",
     "@ai-sdk/provider": "^3.0.3",
@@ -94,6 +95,7 @@
     "redis": "^5.0.0",
     "resumable-stream": "^2.2.10",
     "server-only": "^0.0.1",
+    "sharp": "^0.34.5",
     "shiki": "^3.21.0",
     "sonner": "^1.5.0",
     "streamdown": "^2.0.1",

@@ -10,6 +10,8 @@ const filePartSchema = z.object({
   mediaType: z.enum([
     "image/jpeg",
     "image/png",
+    "image/gif",
+    "image/webp",
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

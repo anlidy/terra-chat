@@ -1,3 +1,4 @@
+import { createAlibaba } from "@ai-sdk/alibaba";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { customProvider } from "ai";
@@ -30,12 +31,15 @@ export const myProvider = isTestEnvironment
   : null;
 
 function createProviderInstance(
-  format: "openai" | "anthropic",
+  format: "openai" | "anthropic" | "alibaba",
   baseUrl: string,
   apiKey: string
 ) {
   if (format === "anthropic") {
     return createAnthropic({ baseURL: baseUrl, apiKey });
+  }
+  if (format === "alibaba") {
+    return createAlibaba({ baseURL: baseUrl, apiKey });
   }
   return createOpenAI({ baseURL: baseUrl, apiKey });
 }

@@ -720,7 +720,7 @@ export async function createCustomProvider({
   name: string;
   baseUrl: string;
   apiKey: string;
-  format: "openai" | "anthropic";
+  format: "openai" | "anthropic" | "alibaba";
 }) {
   try {
     const [provider] = await db
@@ -752,7 +752,7 @@ export async function updateCustomProvider({
   name?: string;
   baseUrl?: string;
   apiKey?: string;
-  format?: "openai" | "anthropic";
+  format?: "openai" | "anthropic" | "alibaba";
   isEnabled?: boolean;
 }) {
   try {
