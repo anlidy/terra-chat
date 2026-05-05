@@ -33,6 +33,7 @@ import {
 } from "@/lib/ai/tools/rag/get-docs-status";
 import { retrieveDocuments } from "@/lib/ai/tools/rag/retrieve-documents";
 import { getWeather } from "@/lib/ai/tools/weather/get-weather";
+import { webSearch } from "@/lib/ai/tools/web-search";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
@@ -83,6 +84,51 @@ function isVagueQuery(query: string): boolean {
 
   const trimmed = query.trim();
   return vaguePatterns.some((pattern) => pattern.test(trimmed));
+}
+
+/**
+ * Remove orphaned tool_use parts from assistant messages when the corresponding
+ * tool_result is missing from the conversation history. DeepSeek rejects requests
+ * where a tool_use block is not immediately followed by a tool_result block.
+ */
+function filterOrphanedToolUses(messages: DBMessage[]): DBMessage[] {
+  const toolResultIds = new Set<string>();
+  for (const msg of messages) {
+    if (msg.role !== "tool") {
+      continue;
+    }
+    for (const part of msg.parts as Array<{
+      type: string;
+      toolCallId?: string;
+    }>) {
+      if (part.type === "tool_result" && part.toolCallId) {
+        toolResultIds.add(part.toolCallId);
+      }
+    }
+  }
+
+  if (toolResultIds.size === 0) {
+    return messages;
+  }
+
+  return messages
+    .map((msg) => {
+      if (msg.role !== "assistant") {
+        return msg;
+      }
+      const parts = msg.parts as Array<{ type: string; id?: string }>;
+      const filteredParts = parts.filter(
+        (p) => p.type !== "tool_use" || (p.id && toolResultIds.has(p.id))
+      );
+      if (filteredParts.length === parts.length) {
+        return msg;
+      }
+      if (filteredParts.length === 0) {
+        return null;
+      }
+      return { ...msg, parts: filteredParts };
+    })
+    .filter((m): m is DBMessage => m !== null);
 }
 
 export async function POST(request: Request) {
@@ -165,6 +211,7 @@ export async function POST(request: Request) {
       }
       if (!isToolApprovalFlow) {
         messagesFromDb = await getMessagesByChatId({ id });
+        messagesFromDb = filterOrphanedToolUses(messagesFromDb);
       }
     } else if (message?.role === "user") {
       await saveChat({
@@ -361,6 +408,7 @@ export async function POST(request: Request) {
         // All tools always available (including retrieveDocuments and getDocumentsStatus)
         const activeTools = [
           "getWeather",
+          "webSearch",
           "createDocument",
           "updateDocument",
           "requestSuggestions",
@@ -398,6 +446,7 @@ export async function POST(request: Request) {
           providerOptions,
           tools: {
             getWeather,
+            webSearch,
             createDocument: createDocument({ session, dataStream }),
             updateDocument: updateDocument({ session, dataStream }),
             requestSuggestions: requestSuggestions({ session, dataStream }),
