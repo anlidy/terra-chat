@@ -1,5 +1,6 @@
 import "server-only";
 
+import dns from "node:dns";
 import {
   and,
   asc,
@@ -14,6 +15,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { cut } from "nodejieba";
 import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
 import { ChatbotError } from "../errors";
@@ -42,15 +44,28 @@ import { generateHashedPassword } from "./utils";
 // use the Drizzle adapter for Auth.js / NextAuth
 // https://authjs.dev/reference/adapter/drizzle
 
+dns.setDefaultResultOrder("ipv4first");
+
+const globalForDb = globalThis as unknown as {
+  _postgresClient?: ReturnType<typeof postgres>;
+};
+
 // biome-ignore lint: Forbidden non-null assertion.
-const client = postgres(process.env.POSTGRES_URL!, {
-  ssl: process.env.NODE_ENV === "production" ? "require" : "prefer",
-  connect_timeout: 60,
-  idle_timeout: 30,
-  max_lifetime: 60 * 30,
-  max: 10,
-  prepare: false,
-});
+const client =
+  globalForDb._postgresClient ??
+  postgres(process.env.POSTGRES_URL!, {
+    ssl: process.env.NODE_ENV === "production" ? "require" : "prefer",
+    connect_timeout: 60,
+    idle_timeout: 30,
+    max_lifetime: 60 * 30,
+    max: 10,
+    prepare: false,
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  globalForDb._postgresClient = client;
+}
+
 const db = drizzle(client);
 type ChatVisibility = "public" | "private";
 
@@ -912,6 +927,7 @@ export async function insertDocumentChunks({
     content: string;
     embedding: number[];
     chunkIndex: number;
+    pageNumber?: number | null;
   }>;
 }) {
   try {
@@ -924,26 +940,33 @@ export async function insertDocumentChunks({
 export async function similaritySearch({
   chatId,
   embedding,
+  documentIds,
   limit = 5,
 }: {
   chatId: string;
   embedding: number[];
+  documentIds?: string[];
   limit?: number;
 }) {
   try {
     const embeddingStr = `[${embedding.join(",")}]`;
+    const conditions = [eq(documentChunk.chatId, chatId)];
+    if (documentIds && documentIds.length > 0) {
+      conditions.push(inArray(documentResource.id, documentIds));
+    }
     return await db
       .select({
         content: documentChunk.content,
         chunkIndex: documentChunk.chunkIndex,
         fileName: documentResource.fileName,
+        pageNumber: documentChunk.pageNumber,
       })
       .from(documentChunk)
       .innerJoin(
         documentResource,
         eq(documentChunk.resourceId, documentResource.id)
       )
-      .where(eq(documentChunk.chatId, chatId))
+      .where(and(...conditions))
       .orderBy(sql`${documentChunk.embedding} <=> ${embeddingStr}::vector`)
       .limit(limit);
   } catch (error) {
@@ -951,26 +974,54 @@ export async function similaritySearch({
   }
 }
 
+const CJK_RE = /[一-鿿㐀-䶿]/;
+
+/**
+ * Build a tsquery string from user input.
+ * Uses jieba for Chinese word segmentation, with prefix matching
+ * for CJK terms since the indexed content (to_tsvector('simple'))
+ * doesn't segment Chinese.
+ */
+function buildTsQuery(query: string): string {
+  try {
+    const segments = cut(query);
+    return segments.map((w) => (CJK_RE.test(w) ? `${w}:*` : w)).join(" & ");
+  } catch {
+    // Fallback: space-split, no prefix matching
+    return query
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length > 0)
+      .join(" & ");
+  }
+}
+
 /**
  * BM25 full-text search using PostgreSQL's ts_rank_cd
  * Uses 'simple' configuration for multilingual support (Chinese + English)
+ * Chinese queries are segmented with jieba for better recall
  */
 export async function bm25Search({
   chatId,
   query,
+  documentIds,
   limit = 20,
 }: {
   chatId: string;
   query: string;
+  documentIds?: string[];
   limit?: number;
 }) {
   try {
-    // Convert query to tsquery format
-    const tsQuery = query
-      .trim()
-      .split(/\s+/)
-      .filter((word) => word.length > 0)
-      .join(" & ");
+    const tsQuery = buildTsQuery(query);
+
+    const conditions: SQL[] = [
+      eq(documentChunk.chatId, chatId),
+      sql`to_tsvector('simple', ${documentChunk.content}) @@ to_tsquery('simple', ${tsQuery})`,
+    ];
+    if (documentIds && documentIds.length > 0) {
+      conditions.push(inArray(documentResource.id, documentIds));
+    }
 
     return await db
       .select({
@@ -978,6 +1029,7 @@ export async function bm25Search({
         content: documentChunk.content,
         chunkIndex: documentChunk.chunkIndex,
         fileName: documentResource.fileName,
+        pageNumber: documentChunk.pageNumber,
         rank: sql<number>`ts_rank_cd(to_tsvector('simple', ${documentChunk.content}), to_tsquery('simple', ${tsQuery}))`,
       })
       .from(documentChunk)
@@ -985,12 +1037,7 @@ export async function bm25Search({
         documentResource,
         eq(documentChunk.resourceId, documentResource.id)
       )
-      .where(
-        and(
-          eq(documentChunk.chatId, chatId),
-          sql`to_tsvector('simple', ${documentChunk.content}) @@ to_tsquery('simple', ${tsQuery})`
-        )
-      )
+      .where(and(...conditions))
       .orderBy(
         sql`ts_rank_cd(to_tsvector('simple', ${documentChunk.content}), to_tsquery('simple', ${tsQuery})) DESC`
       )

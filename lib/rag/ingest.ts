@@ -53,15 +53,18 @@ export async function ingest({
       console.log(
         `[ingest] Embedding ${chunks.length} chunks for ${resource.id}`
       );
-      const embeddings = await Promise.all(chunks.map((c) => embedText(c)));
+      const embeddings = await Promise.all(
+        chunks.map((c) => embedText(c.content))
+      );
 
       await insertDocumentChunks({
-        chunks: chunks.map((content, i) => ({
+        chunks: chunks.map((chunk, i) => ({
           resourceId: resource.id,
           chatId,
-          content,
+          content: chunk.content,
           embedding: embeddings[i],
           chunkIndex: i,
+          pageNumber: chunk.pageNumber ?? null,
         })),
       });
 

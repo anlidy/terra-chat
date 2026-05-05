@@ -20,6 +20,7 @@ import {
   buildDocsStatusMessage,
   ragContextPrompt,
 } from "@/lib/ai/prompts/dynamic-messages";
+import { buildTimeSection } from "@/lib/ai/prompts/sections/time";
 import type { RequestHints } from "@/lib/ai/prompts/types";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/artifacts/create-document";
@@ -305,14 +306,15 @@ export async function POST(request: Request) {
         // Build static system prompt (built once, reused)
         const staticSystemPrompt = promptBuilder.build({ requestHints });
 
-        // Prepare dynamic system messages
-        const dynamicMessages: Array<{ role: "system"; content: string }> = [];
+        // Collect dynamic context strings to prepend to the last user message.
+        // These change per-request, so they live here rather than in the static
+        // system prompt, which should stay cache-friendly.
+        const dynamicContexts: string[] = [buildTimeSection()];
 
-        // Inject document status if documents exist
         if (docsStatus.hasDocuments) {
           const docsStatusMsg = buildDocsStatusMessage(docsStatus);
           if (docsStatusMsg) {
-            dynamicMessages.push({ role: "system", content: docsStatusMsg });
+            dynamicContexts.push(docsStatusMsg);
           }
         }
 
@@ -343,10 +345,7 @@ export async function POST(request: Request) {
             console.log("[RAG Debug] chunks found:", chunks.length);
             if (chunks.length > 0) {
               const proactiveContextMsg = ragContextPrompt(chunks);
-              dynamicMessages.push({
-                role: "system",
-                content: proactiveContextMsg,
-              });
+              dynamicContexts.push(proactiveContextMsg);
               console.log(
                 "[RAG Debug] proactiveContext length:",
                 proactiveContextMsg.length
@@ -370,33 +369,30 @@ export async function POST(request: Request) {
           "generateImage",
         ];
 
-        // Construct final messages: static prompt → history → dynamic messages → current message
-        // Insert dynamic messages before the last user message to maintain proper context flow
-        let finalMessages = [...modelMessages];
-
-        if (dynamicMessages.length > 0) {
-          // Find the index of the last user message
-          const lastUserMsgIndex = finalMessages
-            .map((m) => m.role)
-            .lastIndexOf("user");
-
-          if (lastUserMsgIndex === -1) {
-            // If no user message found (shouldn't happen), append dynamic messages at the end
-            finalMessages = [...finalMessages, ...dynamicMessages];
-          } else {
-            // Insert dynamic messages right before the last user message
-            finalMessages = [
-              ...finalMessages.slice(0, lastUserMsgIndex),
-              ...dynamicMessages,
-              ...finalMessages.slice(lastUserMsgIndex),
-            ];
+        // Prepend dynamic context to the last user message instead of inserting
+        // separate { role: "system" } messages — providers like Anthropic reject
+        // multiple system blocks that are separated by user/assistant messages.
+        if (dynamicContexts.length > 0) {
+          const dynamicContent = dynamicContexts.join("\n\n");
+          const lastUserMsg = [...modelMessages]
+            .reverse()
+            .find((m) => m.role === "user");
+          if (lastUserMsg) {
+            if (typeof lastUserMsg.content === "string") {
+              lastUserMsg.content = `${dynamicContent}\n\n${lastUserMsg.content}`;
+            } else if (Array.isArray(lastUserMsg.content)) {
+              lastUserMsg.content = [
+                { type: "text", text: `${dynamicContent}\n\n` },
+                ...lastUserMsg.content,
+              ];
+            }
           }
         }
 
         const result = streamText({
           model,
           system: staticSystemPrompt,
-          messages: finalMessages,
+          messages: modelMessages,
           stopWhen: stepCountIs(5),
           experimental_activeTools: activeTools as never[],
           providerOptions,

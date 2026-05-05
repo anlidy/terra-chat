@@ -1,35 +1,34 @@
 import { bm25Search, similaritySearch } from "@/lib/db/queries";
+import { rerankDocuments } from "./rerank";
 
-/**
- * Reciprocal Rank Fusion (RRF) algorithm
- * Combines rankings from multiple retrieval methods
- *
- * Formula: RRF_score = Σ 1 / (k + rank_i)
- * where k is a constant (typically 60) and rank_i is the rank in each list
- */
+export interface ChunkCitation {
+  content: string;
+  chunkIndex: number;
+  fileName: string;
+  pageNumber?: number | null;
+  /** Relevance score from reranker (0–1), only present when reranking is enabled */
+  score?: number;
+}
+
 function reciprocalRankFusion(
   results: Array<{
     id: string;
     content: string;
     chunkIndex: number;
     fileName: string;
+    pageNumber?: number | null;
     source: "vector" | "bm25";
     rank: number;
   }>,
   k = 60
-): Array<{
-  content: string;
-  chunkIndex: number;
-  fileName: string;
-  score: number;
-}> {
-  // Group by content (deduplication)
+): Array<ChunkCitation & { score: number }> {
   const scoreMap = new Map<
     string,
     {
       content: string;
       chunkIndex: number;
       fileName: string;
+      pageNumber?: number | null;
       vectorRank?: number;
       bm25Rank?: number;
     }
@@ -50,13 +49,13 @@ function reciprocalRankFusion(
         content: result.content,
         chunkIndex: result.chunkIndex,
         fileName: result.fileName,
+        pageNumber: result.pageNumber,
         vectorRank: result.source === "vector" ? result.rank : undefined,
         bm25Rank: result.source === "bm25" ? result.rank : undefined,
       });
     }
   }
 
-  // Calculate RRF scores
   const scored = Array.from(scoreMap.values()).map((item) => {
     let score = 0;
     if (item.vectorRank !== undefined) {
@@ -69,44 +68,36 @@ function reciprocalRankFusion(
       content: item.content,
       chunkIndex: item.chunkIndex,
       fileName: item.fileName,
+      pageNumber: item.pageNumber,
       score,
     };
   });
 
-  // Sort by score descending
   return scored.sort((a, b) => b.score - a.score);
 }
 
-/**
- * Hybrid search combining vector similarity and BM25
- *
- * @param chatId - Chat session ID
- * @param query - Search query text
- * @param embedding - Query embedding vector
- * @param limit - Number of results to return (default: 5)
- * @param vectorLimit - Number of results from vector search (default: 20)
- * @param bm25Limit - Number of results from BM25 search (default: 20)
- * @returns Ranked and deduplicated search results
- */
 export async function hybridSearch({
   chatId,
   query,
   embedding,
+  documentIds,
   limit = 5,
   vectorLimit = 20,
   bm25Limit = 20,
+  useRerank = true,
 }: {
   chatId: string;
   query: string;
   embedding: number[];
+  documentIds?: string[];
   limit?: number;
   vectorLimit?: number;
   bm25Limit?: number;
-}) {
-  // Run both searches in parallel
+  useRerank?: boolean;
+}): Promise<ChunkCitation[]> {
   const [vectorResults, bm25Results] = await Promise.all([
-    similaritySearch({ chatId, embedding, limit: vectorLimit }),
-    bm25Search({ chatId, query, limit: bm25Limit }),
+    similaritySearch({ chatId, embedding, documentIds, limit: vectorLimit }),
+    bm25Search({ chatId, query, documentIds, limit: bm25Limit }),
   ]);
 
   console.log(
@@ -118,14 +109,22 @@ export async function hybridSearch({
     return [];
   }
   if (vectorResults.length === 0) {
-    return bm25Results.slice(0, limit).map((r) => ({
-      content: r.content,
-      chunkIndex: r.chunkIndex,
-      fileName: r.fileName,
-    }));
+    return await rerankAndFormat({
+      query,
+      candidates: bm25Results,
+      useRerank,
+      limit,
+      topK: limit,
+    });
   }
   if (bm25Results.length === 0) {
-    return vectorResults.slice(0, limit);
+    return await rerankAndFormat({
+      query,
+      candidates: vectorResults,
+      useRerank,
+      limit,
+      topK: limit,
+    });
   }
 
   // Prepare results with ranks for RRF
@@ -135,6 +134,7 @@ export async function hybridSearch({
       content: r.content,
       chunkIndex: r.chunkIndex,
       fileName: r.fileName,
+      pageNumber: r.pageNumber,
       source: "vector" as const,
       rank: idx + 1,
     })),
@@ -143,6 +143,7 @@ export async function hybridSearch({
       content: r.content,
       chunkIndex: r.chunkIndex,
       fileName: r.fileName,
+      pageNumber: r.pageNumber,
       source: "bm25" as const,
       rank: idx + 1,
     })),
@@ -151,10 +152,64 @@ export async function hybridSearch({
   // Apply RRF fusion
   const fused = reciprocalRankFusion(rankedResults);
 
-  // Return top results
-  return fused.slice(0, limit).map((r) => ({
+  // Get top candidates for reranking
+  const candidates = fused.slice(0, Math.max(limit * 2, 10));
+
+  return await rerankAndFormat({
+    query,
+    candidates,
+    useRerank,
+    limit,
+    topK: limit,
+  });
+}
+
+/** Apply reranking (if enabled) and format to ChunkCitation */
+async function rerankAndFormat({
+  query,
+  candidates,
+  useRerank,
+  limit,
+  topK,
+}: {
+  query: string;
+  candidates: ChunkCitation[];
+  useRerank: boolean;
+  limit: number;
+  topK: number;
+}): Promise<ChunkCitation[]> {
+  if (useRerank && candidates.length > topK) {
+    console.log(`[Hybrid Search] Reranking ${candidates.length} candidates`);
+    const reranked = await rerankDocuments({
+      query,
+      documents: candidates,
+      topK,
+    });
+    return reranked.map((r) => ({
+      content: r.content,
+      chunkIndex: r.chunkIndex,
+      fileName: r.fileName,
+      pageNumber: r.pageNumber,
+      score: r.score,
+    }));
+  }
+
+  if (useRerank) {
+    // Fewer candidates than topK — skip API call, rerankDocuments would just return them
+    return candidates.slice(0, topK).map((r) => ({
+      content: r.content,
+      chunkIndex: r.chunkIndex,
+      fileName: r.fileName,
+      pageNumber: r.pageNumber,
+      score: r.score,
+    }));
+  }
+
+  // No reranking — no meaningful score
+  return candidates.slice(0, limit).map((r) => ({
     content: r.content,
     chunkIndex: r.chunkIndex,
     fileName: r.fileName,
+    pageNumber: r.pageNumber,
   }));
 }

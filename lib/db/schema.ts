@@ -247,6 +247,7 @@ export const documentChunk = pgTable(
     content: text("content").notNull(),
     embedding: vector("embedding", { dimensions: 1024 }),
     chunkIndex: integer("chunkIndex").notNull(),
+    pageNumber: integer("pageNumber"), // Page number for citation (null for non-paginated docs)
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (table) => ({

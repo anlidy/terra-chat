@@ -175,8 +175,7 @@ pnpm test lib/rag/__tests__/hybrid-search.test.ts
 ## 下一步优化
 
 1. **重排序 (Reranker)**
-   - 在混合检索后添加重排序层
-   - 使用 Cohere Rerank 或 BGE Reranker
+   - 已集成 DashScope gte-rerank
 
 2. **引用溯源**
    - 添加 `pageNumber` 字段
@@ -195,3 +194,38 @@ pnpm test lib/rag/__tests__/hybrid-search.test.ts
 - [RRF 论文](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf)
 - [PostgreSQL 全文搜索](https://www.postgresql.org/docs/current/textsearch.html)
 - [LangChain Ensemble Retriever](https://python.langchain.com/docs/modules/data_connection/retrievers/ensemble)
+
+
+## DashScope Rerank 集成
+
+### 快速配置
+
+```bash
+# 1. 获取 API Key
+# https://dashscope.console.aliyun.com/
+
+# 2. 配置环境变量
+echo "DASHSCOPE_API_KEY=your_key" >> .env.local
+
+# 3. 重启应用
+pnpm dev
+```
+
+### 自动降级
+
+- ✅ 有 `DASHSCOPE_API_KEY`: 使用 DashScope gte-rerank（高精度）
+- ⚠️ 无 API Key: 使用启发式重排序（免费）
+
+### 测试
+
+```bash
+npx tsx lib/rag/__tests__/test-rerank.ts
+```
+
+## 效果对比
+
+| 功能 | 精度 | 速度 | 成本 |
+|------|------|------|------|
+| 纯向量检索 | ⭐⭐⭐ | ⚡⚡⚡ | 免费 |
+| 混合检索 | ⭐⭐⭐⭐ | ⚡⚡ | 免费 |
+| + Rerank (DashScope) | ⭐⭐⭐⭐⭐ | ⚡⚡ | 按量付费 |

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
-import { getChatById } from "@/lib/db/queries";
+import { getChatById, saveChat } from "@/lib/db/queries";
 import { ingest } from "@/lib/rag/ingest";
 
 const DOCUMENT_TYPES = [
@@ -94,16 +94,20 @@ export async function POST(request: Request) {
       };
       const fileType = fileTypeMap[file.type];
 
-      // Validate chat exists and user owns it
-      const existingChat = await getChatById({ id: chatId });
+      // Ensure chat exists (create if it doesn't — the user may upload files
+      // before sending the first message)
+      let existingChat = await getChatById({ id: chatId });
       if (!existingChat) {
-        return NextResponse.json(
-          { error: "Chat not found. Create chat first." },
-          { status: 404 }
-        );
+        await saveChat({
+          id: chatId,
+          userId: session.user.id,
+          title: filename,
+          visibility: "private",
+        });
+        existingChat = await getChatById({ id: chatId });
       }
 
-      if (existingChat.userId !== session.user.id) {
+      if (existingChat?.userId !== session.user.id) {
         return NextResponse.json(
           { error: "Unauthorized to upload to this chat" },
           { status: 403 }

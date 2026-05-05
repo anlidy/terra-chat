@@ -1,0 +1,1 @@
+ALTER TABLE "DocumentChunk" ADD COLUMN "pageNumber" integer;

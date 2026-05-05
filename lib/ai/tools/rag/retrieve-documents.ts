@@ -76,7 +76,12 @@ Examples:
       }
 
       const embedding = await embedText(query);
-      const chunks = await hybridSearch({ chatId, query, embedding });
+      const chunks = await hybridSearch({
+        chatId,
+        query,
+        embedding,
+        documentIds: readyDocs.map((d) => d.id),
+      });
       console.log(
         `[RAG Tool] Retrieved ${chunks.length} chunks for query: ${query}`
       );
@@ -84,6 +89,11 @@ Examples:
         content: c.content,
         fileName: c.fileName,
         chunkIndex: c.chunkIndex,
+        pageNumber: c.pageNumber,
+        score: c.score,
+        citation: c.pageNumber
+          ? `${c.fileName} (Page ${c.pageNumber})`
+          : c.fileName,
       }));
     },
   });

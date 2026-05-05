@@ -23,48 +23,43 @@ export function buildDocsStatusMessage(status: DocsStatusResult): string {
     return "";
   }
 
-  const parts: string[] = ["<document_status>"];
-
-  // Summary
   const totalDocs = status.documents.length;
-  parts.push(
-    `You have access to ${totalDocs} document${totalDocs > 1 ? "s" : ""}:`
-  );
-  parts.push("");
+  const parts: string[] = [
+    "<document_status>",
+    `The user has uploaded ${totalDocs} document${totalDocs > 1 ? "s" : ""} to this conversation:`,
+    "",
+  ];
 
-  // Document list
   for (const doc of status.documents) {
-    const statusText =
+    const statusLabel =
       doc.status === "ready"
-        ? "✓ ready"
+        ? "ready"
         : doc.status === "processing"
-          ? "⏳ processing"
-          : "✗ failed";
-    parts.push(`- ${doc.fileName} (${statusText})`);
+          ? "processing"
+          : "failed";
+    parts.push(
+      `- id: ${doc.id}  name: ${doc.fileName}  status: ${statusLabel}`
+    );
   }
   parts.push("");
 
-  // Usage instructions based on status
   if (status.readyCount > 0) {
     parts.push(
-      `${status.readyCount} document${status.readyCount > 1 ? "s are" : " is"} ready for retrieval. Use the \`retrieveDocuments\` tool to search for specific information. Use \`getDocumentsStatus\` tool to get document IDs and filenames.`
+      `${status.readyCount} document${status.readyCount > 1 ? "s" : ""} above marked "ready" can be searched now. Use the \`retrieveDocuments\` tool with the document id(s) and a query to find relevant excerpts.`
     );
   }
-
   if (status.processingCount > 0) {
     parts.push(
-      `${status.processingCount} document${status.processingCount > 1 ? "s are" : " is"} still processing. Please wait before searching ${status.processingCount > 1 ? "them" : "it"}.`
+      `${status.processingCount} document${status.processingCount > 1 ? "s" : ""} above marked "processing" ${status.processingCount > 1 ? "are" : "is"} not yet searchable. Tell the user to wait briefly and try again.`
     );
   }
-
   if (status.failedCount > 0) {
     parts.push(
-      `${status.failedCount} document${status.failedCount > 1 ? "s" : ""} could not be processed. You may ask the user to re-upload ${status.failedCount > 1 ? "them" : "it"}.`
+      `${status.failedCount} document${status.failedCount > 1 ? "s" : ""} above marked "failed" could not be processed. Ask the user to re-upload ${status.failedCount > 1 ? "them" : "it"}.`
     );
   }
 
   parts.push("</document_status>");
-
   return parts.join("\n");
 }
 
