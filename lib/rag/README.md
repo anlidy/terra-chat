@@ -1,231 +1,74 @@
-# RAG 混合检索实现
+# RAG 检索架构
 
-## 概述
+## 检索流水线
 
-实现了 **BM25 + 向量检索** 的混合检索，使用 **Reciprocal Rank Fusion (RRF)** 算法融合结果。
+应用中的主动检索和 `retrieveDocuments` 工具共用同一个入口：
 
-## 架构
-
-```
-用户查询
-    ↓
-    ├─→ 向量检索 (语义相似) → top 20
-    └─→ BM25 检索 (关键词匹配) → top 20
-            ↓
-        RRF 融合算法
-            ↓
-        返回 top 5
+```text
+pgvector 稠密向量检索 + PostgreSQL lexical 全文检索
+→ Reciprocal Rank Fusion（RRF）
+→ 可选 DashScope gte-rerank（无 Key 时使用确定性启发式回退）
 ```
 
-## 核心文件
+PostgreSQL 分支使用 `to_tsvector('simple', ...)`、`to_tsquery` 和
+`ts_rank_cd`。这是 PostgreSQL 原生 lexical/full-text ranking，**不是 BM25**。
 
-### 1. `lib/db/schema.ts`
-- 添加了 GIN 全文搜索索引：`content_search_idx`
-- 使用 PostgreSQL 的 `to_tsvector` 和 `to_tsquery`
-- **配置**: `simple` - 支持中英文混合，无停用词过滤
+## 代码边界
 
-### 2. `lib/db/queries.ts`
-- `bm25Search()`: BM25 全文检索
-  - 使用 `ts_rank_cd` 计算相关性分数
-  - 支持多词查询（AND 逻辑）
-  - **语言配置**: `simple` - 兼容多语言
+- `lib/rag/retrieve.ts`：应用级统一入口，负责查询校验和生成一次 embedding。
+- `lib/rag/hybrid-search.ts`：按 `vector`、`lexical` 或 `hybrid` 策略调度检索。
+- `lib/rag/fusion.ts`：纯 RRF；按数据库 `chunkId` 去重。
+- `lib/rag/rerank.ts`：保留检索元数据并增加 `rerankScore`。
+- `lib/db/queries.ts`：只负责独立的向量查询和 lexical 查询。
+- `evals/`：离线 smoke 与真实语料检索基准，详见 [`evals/README.md`](../../evals/README.md)。
 
-### 3. `lib/rag/hybrid-search.ts`
-- `hybridSearch()`: 混合检索主函数
-- `reciprocalRankFusion()`: RRF 融合算法
-
-### 4. `lib/ai/tools/rag/retrieve-documents.ts`
-- 修改为使用 `hybridSearch()` 替代 `similaritySearch()`
-
-## RRF 算法原理
-
-**公式**: `RRF_score = Σ 1 / (k + rank_i)`
-
-- `k`: 常数，默认 60（平滑参数）
-- `rank_i`: 在第 i 个检索列表中的排名
-
-**示例**:
-```
-查询: "API key"
-
-向量检索结果:
-1. doc1 (语义相关)
-2. doc2 (包含 "API key")
-3. doc3 (配置相关)
-
-BM25 检索结果:
-1. doc2 (精确匹配 "API key")
-2. doc4 (包含 "key")
-3. doc1 (包含 "API")
-
-RRF 分数:
-- doc2: 1/(60+2) + 1/(60+1) = 0.0325 ← 最高（两个列表都靠前）
-- doc1: 1/(60+1) + 1/(60+3) = 0.0323
-- doc3: 1/(60+3) + 0 = 0.0159
-- doc4: 0 + 1/(60+2) = 0.0161
-
-最终排序: doc2 > doc1 > doc4 > doc3
-```
-
-## 优势
-
-### 向量检索的优势
-- ✅ 语义理解（同义词、改写）
-- ✅ 跨语言相似性
-- ❌ 精确匹配弱
-- ❌ 专有名词不准
-
-### BM25 的优势
-- ✅ 精确关键词匹配
-- ✅ 专有名词、代码、数字
-- ❌ 无语义理解
-- ❌ 同义词无法匹配
-
-### 混合检索的优势
-- ✅ 结合两者优点
-- ✅ 精确匹配 + 语义理解
-- ✅ 去重（同一文档块只出现一次）
-- ✅ 鲁棒性强（一个失败另一个兜底）
+标准结果包含 `chunkId`、`resourceId`、文件名、块号、页码，以及可用的
+`vectorDistance`、`lexicalRank`、`fusionScore`、`rerankScore`。
 
 ## 使用方法
 
-### 基本用法
+调用方应使用统一服务，不直接组合 embedding 与数据库查询：
+
 ```typescript
-import { hybridSearch } from "@/lib/rag/hybrid-search";
-import { embedText } from "@/lib/rag/embed";
+import { retrieveDocumentChunks } from "@/lib/rag/retrieve";
 
-const query = "PostgreSQL JSONB 索引";
-const embedding = await embedText(query);
-
-const results = await hybridSearch({
-  chatId: "chat-123",
-  query,
-  embedding,
-  limit: 5,  // 返回 top 5
+const chunks = await retrieveDocumentChunks({
+  chatId: "chat-uuid",
+  query: "PostgreSQL JSONB 索引",
+  limit: 5,
+  strategy: "hybrid",
+  useRerank: true,
 });
 ```
 
-### 高级配置
-```typescript
-const results = await hybridSearch({
-  chatId: "chat-123",
-  query,
-  embedding,
-  limit: 5,          // 最终返回数量
-  vectorLimit: 20,   // 向量检索召回数量
-  bm25Limit: 20,     // BM25 检索召回数量
-});
-```
+策略语义：
 
-## 数据库迁移
+- `vector`：仅 pgvector；会生成 query embedding。
+- `lexical`：仅 PostgreSQL 全文检索；不会生成 embedding。
+- `hybrid`：两路并行召回后使用 RRF。
+
+## 排序与回退
+
+RRF 使用 `Σ 1 / (k + rank)`，默认 `k = 60`。一路没有结果时，另一路仍会
+按 RRF 的单列表分数返回；两路都为空时返回空数组。开启 rerank 时，候选结果
+由 DashScope `gte-rerank` 排序；没有 `DASHSCOPE_API_KEY` 或远端调用失败时，
+使用本地启发式排序。
+
+## 数据库索引
+
+`DocumentChunk.content` 使用 `simple` 配置的 GIN 全文索引，以保留中英文混合
+内容中的原始词项。向量检索使用 pgvector 余弦距离。数据库迁移命令：
 
 ```bash
-# 生成迁移文件
 pnpm db:generate
-
-# 运行迁移（创建全文搜索索引）
 pnpm db:migrate
 ```
 
-迁移 SQL:
-```sql
--- 删除旧索引（如果存在）
-DROP INDEX IF EXISTS "content_search_idx";
-
--- 创建新索引（使用 simple 配置支持多语言）
-CREATE INDEX IF NOT EXISTS "content_search_idx" 
-ON "DocumentChunk" 
-USING gin (to_tsvector('simple', "content"));
-```
-
-**为什么用 `simple` 而不是 `english`**:
-- ✅ 支持中英文混合内容
-- ✅ 不会过滤停用词（保留所有词）
-- ✅ 不做词干提取（保持原词）
-- ⚠️ 索引稍大（因为不过滤停用词）
-
-## 性能优化
-
-### 索引优化
-- GIN 索引适合全文搜索
-- 向量索引使用 pgvector 的余弦距离
-
-### 查询优化
-- 并行执行向量和 BM25 检索
-- 召回阶段取 top 20，融合后取 top 5
-- 避免重复计算（去重逻辑）
-
-### 调优参数
-```typescript
-// 调整召回数量（更多召回 = 更好覆盖，但更慢）
-vectorLimit: 20,  // 默认 20
-bm25Limit: 20,    // 默认 20
-
-// 调整 RRF 参数（更大的 k = 更平滑的融合）
-k: 60  // 默认 60，范围 [10, 100]
-```
-
-## 测试
+## 验证
 
 ```bash
-# 运行测试
-pnpm test lib/rag/__tests__/hybrid-search.test.ts
+pnpm test:unit
+pnpm eval:rag:smoke
 ```
 
-## 下一步优化
-
-1. **重排序 (Reranker)**
-   - 已集成 DashScope gte-rerank
-
-2. **引用溯源**
-   - 添加 `pageNumber` 字段
-   - 返回结果包含页码信息
-
-3. **查询改写**
-   - 使用 LLM 改写用户查询
-   - 生成多个查询变体
-
-4. **缓存优化**
-   - 缓存常见查询的 embedding
-   - 缓存检索结果
-
-## 参考资料
-
-- [RRF 论文](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf)
-- [PostgreSQL 全文搜索](https://www.postgresql.org/docs/current/textsearch.html)
-- [LangChain Ensemble Retriever](https://python.langchain.com/docs/modules/data_connection/retrievers/ensemble)
-
-
-## DashScope Rerank 集成
-
-### 快速配置
-
-```bash
-# 1. 获取 API Key
-# https://dashscope.console.aliyun.com/
-
-# 2. 配置环境变量
-echo "DASHSCOPE_API_KEY=your_key" >> .env.local
-
-# 3. 重启应用
-pnpm dev
-```
-
-### 自动降级
-
-- ✅ 有 `DASHSCOPE_API_KEY`: 使用 DashScope gte-rerank（高精度）
-- ⚠️ 无 API Key: 使用启发式重排序（免费）
-
-### 测试
-
-```bash
-npx tsx lib/rag/__tests__/test-rerank.ts
-```
-
-## 效果对比
-
-| 功能 | 精度 | 速度 | 成本 |
-|------|------|------|------|
-| 纯向量检索 | ⭐⭐⭐ | ⚡⚡⚡ | 免费 |
-| 混合检索 | ⭐⭐⭐⭐ | ⚡⚡ | 免费 |
-| + Rerank (DashScope) | ⭐⭐⭐⭐⭐ | ⚡⚡ | 按量付费 |
+真实语料的下载、导入和策略对比命令见 [`evals/README.md`](../../evals/README.md)。
