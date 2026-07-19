@@ -6,28 +6,26 @@
  *   2. Heuristic              (no API key required)
  */
 
-interface RerankDocument {
+export interface RerankDocument {
   content: string;
   chunkIndex: number;
   fileName: string;
   pageNumber?: number | null;
 }
 
-interface RerankResult extends RerankDocument {
-  score: number;
-}
-
-export async function rerankDocuments({
+export async function rerankDocuments<T extends RerankDocument>({
   query,
   documents,
   topK = 5,
 }: {
   query: string;
-  documents: RerankDocument[];
+  documents: T[];
   topK?: number;
-}): Promise<RerankResult[]> {
+}): Promise<Array<T & { rerankScore: number }>> {
   if (documents.length <= topK) {
-    return documents.slice(0, topK).map((d) => ({ ...d, score: 1 }));
+    return documents
+      .slice(0, topK)
+      .map((document) => ({ ...document, rerankScore: 1 }));
   }
 
   if (process.env.DASHSCOPE_API_KEY) {
@@ -49,15 +47,15 @@ export async function rerankDocuments({
 
 // ─── DashScope gte-rerank ──────────────────────────────────
 
-async function rerankWithDashScope({
+async function rerankWithDashScope<T extends RerankDocument>({
   query,
   documents,
   topK = 5,
 }: {
   query: string;
-  documents: RerankDocument[];
+  documents: T[];
   topK?: number;
-}): Promise<RerankResult[]> {
+}): Promise<Array<T & { rerankScore: number }>> {
   const response = await fetch(
     "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
     {
@@ -96,32 +94,35 @@ async function rerankWithDashScope({
     `[DashScope Rerank] ${documents.length} docs → top ${topK}, score range: ${results[0]?.relevance_score.toFixed(3)} - ${results.at(-1)?.relevance_score.toFixed(3)}`
   );
 
-  return results.map((r) => ({
-    ...documents[r.index],
-    score: r.relevance_score,
-  }));
+  return results.map((result) => {
+    const document = documents[result.index];
+    if (document === undefined) {
+      throw new Error(`DashScope returned invalid document index: ${result.index}`);
+    }
+    return { ...document, rerankScore: result.relevance_score };
+  });
 }
 
 // ─── Heuristic fallback ────────────────────────────────────
 
-function rerankWithHeuristic({
+function rerankWithHeuristic<T extends RerankDocument>({
   query,
   documents,
   topK = 5,
 }: {
   query: string;
-  documents: RerankDocument[];
+  documents: T[];
   topK?: number;
-}): RerankResult[] {
+}): Array<T & { rerankScore: number }> {
   const results = documents.map((doc) => ({
     ...doc,
-    score: calculateRelevanceScore(query, doc.content),
+    rerankScore: calculateRelevanceScore(query, doc.content),
   }));
 
-  results.sort((a, b) => b.score - a.score);
+  results.sort((a, b) => b.rerankScore - a.rerankScore);
 
   console.log(
-    `[Heuristic Rerank] Top score: ${results[0]?.score.toFixed(3)}, Bottom: ${results.at(-1)?.score.toFixed(3)}`
+    `[Heuristic Rerank] Top score: ${results[0]?.rerankScore.toFixed(3)}, Bottom: ${results.at(-1)?.rerankScore.toFixed(3)}`
   );
 
   return results.slice(0, topK);

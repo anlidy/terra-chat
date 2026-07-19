@@ -77,7 +77,7 @@ async function testRerank() {
   console.log("Top 3 Results:");
   for (const doc of results) {
     console.log(
-      `\n  ${doc.fileName} (Page ${doc.pageNumber})  score=${doc.score.toFixed(4)}`
+      `\n  ${doc.fileName} (Page ${doc.pageNumber})  score=${doc.rerankScore.toFixed(4)}`
     );
     console.log(`  "${doc.content.slice(0, 80)}..."`);
   }
