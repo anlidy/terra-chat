@@ -88,7 +88,7 @@ Each document has one job:
 - `docs/*.md` explains durable architecture or operations spanning multiple modules.
 - A module-level `README.md` documents details owned by that module.
 - `openspec/changes/<change-id>/` records a scoped change through proposal, design, specifications, and tasks.
-- `docs/superpowers/specs/` and `docs/superpowers/plans/` are dated planning artifacts, not descriptions of current behavior.
+- Date-prefixed records under `docs/specs/` and `docs/plans/` are planning artifacts, not descriptions of current behavior.
 
 When adding or changing documentation:
 
@@ -102,4 +102,3 @@ When adding or changing documentation:
 8. Archive or supersede stale guidance rather than leaving multiple competing sources of truth.
 
 For an OpenSpec change, keep `proposal.md`, `design.md`, affected specs, and `tasks.md` consistent. Completed checkboxes alone do not prove a change is shipped; verify the implementation and user-facing documentation before marking or archiving it.
-

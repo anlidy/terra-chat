@@ -56,6 +56,9 @@ tsconfig.tsbuildinfo
 # Isolated feature worktrees
 .worktrees/
 
+# Local resume and interview material
+/.resume/
+
 # RAG evaluation artifacts
 /evals/data/
 /evals/results/*

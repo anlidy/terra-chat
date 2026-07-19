@@ -6,8 +6,6 @@
 >
 > **Last reviewed**: 2026-07-19
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Add a reproducible RAG retrieval benchmark and route proactive and tool-based document searches through one accurately named hybrid retrieval pipeline.
 
 **Architecture:** A root-level `evals/` package owns normalized public-dataset adapters, deterministic retrieval metrics, smoke fixtures, and reports. Application retrieval is split into pure fusion logic, database-specific vector/lexical searches, and one orchestration service used by both chat entry points.
