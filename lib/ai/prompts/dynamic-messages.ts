@@ -11,6 +11,7 @@
  */
 
 import type { DocsStatusResult } from "./types";
+import type { RetrievedChunk } from "@/lib/rag/types";
 
 /**
  * Build a document status message for injection into the message stream
@@ -68,7 +69,7 @@ export function buildDocsStatusMessage(status: DocsStatusResult): string {
  * Wraps document excerpts with XML tags for clear structure
  */
 export function ragContextPrompt(
-  chunks: Array<{ content: string; fileName: string; chunkIndex: number }>
+  chunks: RetrievedChunk[]
 ): string {
   const excerpts = chunks
     .map(
