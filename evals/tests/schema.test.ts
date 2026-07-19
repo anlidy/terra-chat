@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { parseRetrievalRunConfig } from "../src/run-retrieval";
 import { evalRetrievedChunkSchema, parseEvalCases } from "../src/schema";
 
 const answerableCase = {
@@ -65,4 +66,46 @@ test("evalRetrievedChunkSchema rejects empty required metadata fields", () => {
   );
 
   assert.deepEqual(validationResults, [false, false, false]);
+});
+
+test("retrieval runner requires a chat id", () => {
+  assert.throws(
+    () =>
+      parseRetrievalRunConfig({
+        env: {},
+        args: ["--cases=evals/cases.jsonl"],
+      }),
+    /EVAL_CHAT_ID is required/u,
+  );
+});
+
+test("retrieval runner rejects unsupported strategies", () => {
+  assert.throws(
+    () =>
+      parseRetrievalRunConfig({
+        env: { EVAL_CHAT_ID: "chat-id" },
+        args: ["--cases=evals/cases.jsonl", "--strategy=keyword"],
+      }),
+    /strategy must be vector, lexical, or hybrid/u,
+  );
+});
+
+test("retrieval runner parses explicit options", () => {
+  assert.deepEqual(
+    parseRetrievalRunConfig({
+      env: { EVAL_CHAT_ID: "chat-id" },
+      args: [
+        "--cases=evals/cases.jsonl",
+        "--strategy=lexical",
+        "--rerank=false",
+      ],
+    }),
+    {
+      chatId: "chat-id",
+      casesPath: "evals/cases.jsonl",
+      strategy: "lexical",
+      useRerank: false,
+      k: 5,
+    },
+  );
 });

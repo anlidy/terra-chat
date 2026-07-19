@@ -19,6 +19,7 @@
     "test:unit": "tsx --test evals/tests/*.test.ts lib/rag/*.test.ts",
     "eval:rag:smoke": "tsx evals/src/run-smoke.ts",
     "eval:rag:download": "NODE_USE_ENV_PROXY=1 tsx evals/src/download-datasets.ts",
+    "eval:rag:retrieval": "tsx evals/src/run-retrieval.ts",
     "prepare": "husky"
   },
   "dependencies": {
