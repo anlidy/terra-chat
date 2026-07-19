@@ -1,5 +1,11 @@
 # RAG Evaluation-First Improvement Design
 
+> **Status**: Implemented
+>
+> **Scope**: Evaluation-first RAG improvement milestone
+>
+> **Last reviewed**: 2026-07-19
+
 ## Objective
 
 Turn the existing document-chat RAG implementation into a measurable and internally consistent system. The first milestone must make retrieval changes comparable, route every automatic and tool-triggered search through the same pipeline, and report reproducible retrieval metrics.

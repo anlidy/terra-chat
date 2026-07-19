@@ -1,5 +1,11 @@
 # RAG Evaluation-First Implementation Plan
 
+> **Status**: Implemented
+>
+> **Scope**: Execution plan for the evaluation-first RAG design
+>
+> **Last reviewed**: 2026-07-19
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a reproducible RAG retrieval benchmark and route proactive and tool-based document searches through one accurately named hybrid retrieval pipeline.

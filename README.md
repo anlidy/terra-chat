@@ -108,3 +108,11 @@ pnpm eval:rag:smoke
 | Lexical | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` |
 | Hybrid | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` |
 | Hybrid + rerank | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` |
+
+## 文档与开发约定
+
+- [项目文档目录](docs/README.md) — 架构文档、变更记录、设计计划及其维护状态
+- [仓库工作约定](AGENTS.md) — 开发流程、验证要求和文档治理规则
+- [OpenSpec 变更记录](openspec/changes/) — 功能 proposal、design、specs 与 tasks
+
+文档描述与代码不一致时，以已验证的代码和配置为准，并在同一次变更中更新相应文档。

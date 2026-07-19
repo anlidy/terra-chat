@@ -1,20 +1,30 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  FurryChatbot is a Next.js 16 and React 19 chatbot built with TypeScript,
+  AI SDK 6, Auth.js, Drizzle ORM, PostgreSQL/pgvector, and Tailwind CSS 4.
+  Core domains include streaming chat, provider configuration, artifacts,
+  multimodal uploads, and document-backed RAG.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Executable code and checked-in configuration are the source of truth.
+  README.md is the user-facing setup entry point, AGENTS.md defines repository
+  working rules, docs/ contains durable architecture documentation, and this
+  directory records scoped changes. Planning artifacts must not be described
+  as shipped behavior before implementation is verified.
+
+rules:
+  proposal:
+    - State the problem, intended outcome, scope, and explicit non-goals.
+    - Link related changes or canonical documentation instead of duplicating them.
+    - Identify user-visible behavior, migration needs, and documentation impact.
+  design:
+    - Describe current constraints, chosen design, alternatives, data flow, and failure handling.
+    - Use stable file or symbol references rather than line numbers.
+    - Separate verified current behavior from proposed behavior.
+  specs:
+    - Express requirements as observable behavior with acceptance scenarios.
+    - Cover authorization, error states, data compatibility, and rollback when relevant.
+  tasks:
+    - Keep tasks ordered, independently verifiable, and small enough to review.
+    - Include tests, migrations, documentation updates, and final verification explicitly.
+    - Do not mark a task complete until its implementation and required verification are complete.
