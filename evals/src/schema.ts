@@ -23,11 +23,11 @@ export const ragEvalCaseSchema = z
   });
 
 export const evalRetrievedChunkSchema = z.object({
-  chunkId: z.string(),
-  resourceId: z.string(),
+  chunkId: z.string().min(1),
+  resourceId: z.string().min(1),
   content: z.string(),
   chunkIndex: z.number().int().nonnegative(),
-  fileName: z.string(),
+  fileName: z.string().min(1),
   pageNumber: z.number().int().nonnegative().nullable(),
 });
 
