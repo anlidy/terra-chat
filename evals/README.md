@@ -33,12 +33,15 @@ pnpm eval:rag:download
 ```bash
 EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- \
   --cases=evals/data/normalized/financebench.jsonl \
+  --corpus=evals/data/corpus/financebench \
   --strategy=hybrid \
   --rerank=true
 ```
 
-`EVAL_CHAT_ID` 或 `--cases` 缺失时命令会失败，不会退回 smoke fixture。单个样本
-检索失败会写入该 case 的 `error`，其余样本继续执行。
+`EVAL_CHAT_ID`、`--cases` 或 `--corpus` 缺失时命令会失败，不会退回 smoke
+fixture。`--corpus` 必须指向本次实际上传的完整语料文件或目录；runner 会基于相对
+文件名和内容计算稳定 SHA-256。单个样本检索失败会写入该 case 的 `error`，其余样本
+继续执行。
 
 ## 数据来源与使用限制
 
@@ -89,20 +92,22 @@ type RagEvalCase = {
 - `Latency P50/P95`：所有 case 墙钟检索耗时的 nearest-rank 百分位。
 
 JSON 报告保留每个 case 的相关排名、召回数量、耗时和错误，便于检查聚合值背后的
-失败模式。
+失败模式。JSON 和 Markdown 还会记录 Git revision（有未提交修改时带 `-dirty`）、
+case set/corpus SHA-256、pipeline version、embedding model、实际使用过的 reranker
+以及最小相关性阈值。当前检索未启用阈值，因此记录为 `null`/`disabled`。
 
 ## 策略对比
 
 对同一个 `EVAL_CHAT_ID` 和 cases 文件分别运行：
 
 ```bash
-EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --strategy=vector --rerank=false
-EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --strategy=lexical --rerank=false
-EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --strategy=hybrid --rerank=false
-EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --strategy=hybrid --rerank=true
+EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --corpus=evals/data/corpus/financebench --strategy=vector --rerank=false
+EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --corpus=evals/data/corpus/financebench --strategy=lexical --rerank=false
+EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --corpus=evals/data/corpus/financebench --strategy=hybrid --rerank=false
+EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --corpus=evals/data/corpus/financebench --strategy=hybrid --rerank=true
 ```
 
 runner 使用 strategy、rerank 模式和时间戳命名 JSON/Markdown，因此四次运行会分别
-保留。比较时以 JSON 为机器可读基线，并同时记录代码提交、chat ID 对应的语料版本、
-embedding 模型和是否配置 `DASHSCOPE_API_KEY`；不要把 smoke fixture 分数当成真实
-语料质量。
+保留。比较时以 JSON 为机器可读基线；报告中的 `rerankers` 记录实际执行结果，包括
+远端失败后的回退，而不是根据 `DASHSCOPE_API_KEY` 推测。不要把 smoke fixture 分数
+当成真实语料质量。

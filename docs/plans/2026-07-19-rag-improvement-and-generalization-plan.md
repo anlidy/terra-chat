@@ -1,6 +1,6 @@
 # RAG 可靠性与通用化改进计划
 
-> **状态**：Proposed
+> **状态**：In progress
 >
 > **范围**：文档生命周期、摄取可靠性、检索质量、通用模块边界、评测与可观测性
 >
@@ -152,12 +152,12 @@ type RetrievalRequest = {
 
 目标：让后续每个改动都能回答“提升了什么、牺牲了什么”。
 
-- [ ] 为评测报告增加 commit、corpus hash、pipeline version、embedding model、reranker 和阈值信息。
+- [x] 为评测报告增加 commit、corpus hash、pipeline version、embedding model、reranker 和阈值信息。
 - [ ] 将评测语料的创建、摄取、等待 ready、运行和清理自动化，避免手工上传污染结果。
 - [ ] 跑出 vector、lexical、hybrid、hybrid + rerank 四组真实基线。
 - [ ] 增加项目实际使用场景的中英文测试集：事实问答、摘要、多文档比较、不可回答、表格/幻灯片。
 - [ ] 增加答案忠实度、引用正确率、输入/输出 token、外部 API 次数和估算成本。
-- [ ] 修正报告未记录实际 reranker 的设计偏差。
+- [x] 修正报告未记录实际 reranker 的设计偏差。
 
 验收：相同 corpus/pipeline version 可重复运行；报告足以定位每个失败 case；smoke 分数不再被当作真实质量证明。
 

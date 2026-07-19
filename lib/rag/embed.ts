@@ -1,3 +1,5 @@
+import { RAG_EMBEDDING_DIMENSIONS, RAG_EMBEDDING_MODEL } from "./config";
+
 export async function embedText(text: string): Promise<number[]> {
   const res = await fetch("https://open.bigmodel.cn/api/paas/v4/embeddings", {
     method: "POST",
@@ -6,9 +8,9 @@ export async function embedText(text: string): Promise<number[]> {
       Authorization: `Bearer ${process.env.ZHIPU_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "embedding-3",
+      model: RAG_EMBEDDING_MODEL,
       input: text,
-      dimensions: 1024,
+      dimensions: RAG_EMBEDDING_DIMENSIONS,
     }),
   });
 

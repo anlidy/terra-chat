@@ -1,4 +1,5 @@
 export type RetrievalStrategy = "vector" | "lexical" | "hybrid";
+export type RerankerName = "dashscope/gte-rerank" | "heuristic" | "identity";
 
 export type RetrievedChunk = {
   chunkId: string;
@@ -11,6 +12,7 @@ export type RetrievedChunk = {
   lexicalRank?: number;
   fusionScore?: number;
   rerankScore?: number;
+  reranker?: RerankerName;
 };
 
 export type VectorSearchResult = RetrievedChunk & {

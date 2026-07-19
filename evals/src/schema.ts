@@ -29,6 +29,9 @@ export const evalRetrievedChunkSchema = z.object({
   chunkIndex: z.number().int().nonnegative(),
   fileName: z.string().min(1),
   pageNumber: z.number().int().nonnegative().nullable(),
+  reranker: z
+    .enum(["dashscope/gte-rerank", "heuristic", "identity"])
+    .optional(),
 });
 
 export type RagEvalCase = z.infer<typeof ragEvalCaseSchema>;

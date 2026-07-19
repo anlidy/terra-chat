@@ -650,7 +650,7 @@ Expected: all schema/configuration tests pass.
 
 - [ ] **Step 5: Verify fail-fast behavior without credentials**
 
-Run: `pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --strategy=hybrid --rerank=false`
+Run: `pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --corpus=evals/data/corpus/financebench --strategy=hybrid --rerank=false`
 
 Expected: non-zero exit with `EVAL_CHAT_ID is required`; no fallback to smoke data.
 
@@ -686,7 +686,7 @@ Explicitly state that PostgreSQL `ts_rank_cd` is not BM25.
 
 - `pnpm eval:rag:smoke` for offline validation;
 - `pnpm eval:rag:download` for explicit public-data download;
-- `EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --strategy=hybrid --rerank=true` for a real retrieval run against a chat containing the downloaded corpus;
+- `EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --corpus=evals/data/corpus/financebench --strategy=hybrid --rerank=true` for a real retrieval run against a chat containing the downloaded corpus;
 - dataset sources, attribution, FinanceBench page indexing, and RGB CC BY-NC-SA restriction;
 - normalized schema;
 - definitions and denominators for Recall@5, MRR, NDCG@5, and false-retrieval rate;

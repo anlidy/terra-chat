@@ -73,7 +73,7 @@ test("retrieval runner requires a chat id", () => {
     () =>
       parseRetrievalRunConfig({
         env: {},
-        args: ["--cases=evals/cases.jsonl"],
+        args: ["--cases=evals/cases.jsonl", "--corpus=evals/data/corpus"],
       }),
     /EVAL_CHAT_ID is required/u
   );
@@ -84,7 +84,11 @@ test("retrieval runner rejects unsupported strategies", () => {
     () =>
       parseRetrievalRunConfig({
         env: { EVAL_CHAT_ID: "chat-id" },
-        args: ["--cases=evals/cases.jsonl", "--strategy=keyword"],
+        args: [
+          "--cases=evals/cases.jsonl",
+          "--corpus=evals/data/corpus",
+          "--strategy=keyword",
+        ],
       }),
     /strategy must be vector, lexical, or hybrid/u
   );
@@ -96,6 +100,7 @@ test("retrieval runner parses explicit options", () => {
       env: { EVAL_CHAT_ID: "chat-id" },
       args: [
         "--cases=evals/cases.jsonl",
+        "--corpus=evals/data/corpus",
         "--strategy=lexical",
         "--rerank=false",
       ],
@@ -103,9 +108,21 @@ test("retrieval runner parses explicit options", () => {
     {
       chatId: "chat-id",
       casesPath: "evals/cases.jsonl",
+      corpusPath: "evals/data/corpus",
       strategy: "lexical",
       useRerank: false,
       k: 5,
     }
+  );
+});
+
+test("retrieval runner requires an explicit corpus path", () => {
+  assert.throws(
+    () =>
+      parseRetrievalRunConfig({
+        env: { EVAL_CHAT_ID: "chat-id" },
+        args: ["--cases=evals/cases.jsonl"],
+      }),
+    /--corpus=<path> is required/u
   );
 });

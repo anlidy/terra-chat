@@ -25,11 +25,12 @@ PostgreSQL 分支使用 `to_tsvector('simple', ...)`、`to_tsquery` 和
 - `lib/rag/hybrid-search.ts`：按 `vector`、`lexical` 或 `hybrid` 策略调度检索。
 - `lib/rag/fusion.ts`：纯 RRF；按数据库 `chunkId` 去重。
 - `lib/rag/rerank.ts`：保留检索元数据并增加 `rerankScore`。
+- `lib/rag/config.ts`：集中声明当前 pipeline、embedding model 和维度版本信息。
 - `lib/db/queries.ts`：只负责独立的向量查询和 lexical 查询。
 - `evals/`：离线 smoke 与真实语料检索基准，详见 [`evals/README.md`](../../evals/README.md)。
 
 标准结果包含 `chunkId`、`resourceId`、文件名、块号、页码，以及可用的
-`vectorDistance`、`lexicalRank`、`fusionScore`、`rerankScore`。
+`vectorDistance`、`lexicalRank`、`fusionScore`、`rerankScore` 和实际 `reranker`。
 
 ## 使用方法
 

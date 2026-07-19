@@ -6,6 +6,13 @@ export type RetrievalReport = {
     strategy: string;
     k: number;
     generatedAt: string;
+    sourceRevision: string;
+    caseSetHash: string;
+    corpusHash: string;
+    pipelineVersion: string;
+    embeddingModel: string | null;
+    rerankers: string[];
+    minRelevance: number | null;
   };
   summary: {
     caseCount: number;
@@ -27,6 +34,13 @@ type ReportOptions = {
   strategy: string;
   k: number;
   generatedAt?: string;
+  sourceRevision: string;
+  caseSetHash: string;
+  corpusHash: string;
+  pipelineVersion: string;
+  embeddingModel: string | null;
+  rerankers: string[];
+  minRelevance: number | null;
 };
 
 function average(values: number[]): number {
@@ -63,6 +77,13 @@ export function buildRetrievalReport(
       strategy: options.strategy,
       k: options.k,
       generatedAt: options.generatedAt ?? new Date().toISOString(),
+      sourceRevision: options.sourceRevision,
+      caseSetHash: options.caseSetHash,
+      corpusHash: options.corpusHash,
+      pipelineVersion: options.pipelineVersion,
+      embeddingModel: options.embeddingModel,
+      rerankers: options.rerankers,
+      minRelevance: options.minRelevance,
     },
     summary: {
       caseCount: results.length,
@@ -116,6 +137,13 @@ export function renderMarkdownReport(report: RetrievalReport): string {
 - Dataset: ${metadata.dataset}
 - Strategy: ${metadata.strategy}
 - Generated: ${metadata.generatedAt}
+- Source revision: ${metadata.sourceRevision}
+- Case set hash: ${metadata.caseSetHash}
+- Corpus hash: ${metadata.corpusHash}
+- Pipeline version: ${metadata.pipelineVersion}
+- Embedding model: ${metadata.embeddingModel ?? "not used"}
+- Rerankers: ${metadata.rerankers.join(", ")}
+- Minimum relevance: ${metadata.minRelevance ?? "disabled"}
 
 | Metric | Value |
 | --- | ---: |

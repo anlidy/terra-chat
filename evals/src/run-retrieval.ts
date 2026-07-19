@@ -2,9 +2,15 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
+import {
+  RAG_EMBEDDING_DIMENSIONS,
+  RAG_EMBEDDING_MODEL,
+  RAG_PIPELINE_VERSION,
+} from "../../lib/rag/config";
 import { retrieveDocumentChunks } from "../../lib/rag/retrieve";
 import type { RetrievalStrategy } from "../../lib/rag/types";
 import { evaluateRetrievalCase, type RetrievalCaseResult } from "./metrics";
+import { hashPath, resolveSourceRevision } from "./provenance";
 import { buildRetrievalReport, renderMarkdownReport } from "./report";
 import { evalRetrievedChunkSchema, parseEvalCases } from "./schema";
 
@@ -13,6 +19,7 @@ const K = 5;
 export type RetrievalRunConfig = {
   chatId: string;
   casesPath: string;
+  corpusPath: string;
   strategy: RetrievalStrategy;
   useRerank: boolean;
   k: number;
@@ -42,6 +49,11 @@ export function parseRetrievalRunConfig({
     throw new Error("--cases=<path> is required for a retrieval benchmark");
   }
 
+  const corpusPath = optionValue(args, "corpus");
+  if (!corpusPath) {
+    throw new Error("--corpus=<path> is required for a retrieval benchmark");
+  }
+
   const strategy = optionValue(args, "strategy") ?? "hybrid";
   if (!(["vector", "lexical", "hybrid"] as string[]).includes(strategy)) {
     throw new Error("--strategy must be vector, lexical, or hybrid");
@@ -55,6 +67,7 @@ export function parseRetrievalRunConfig({
   return {
     chatId,
     casesPath,
+    corpusPath,
     strategy: strategy as RetrievalStrategy,
     useRerank: rerank === "true",
     k: K,
@@ -76,6 +89,7 @@ async function run(config: RetrievalRunConfig): Promise<void> {
   const casesContents = await readFile(config.casesPath, "utf8");
   const evalCases = parseEvalCases(parseJsonLines(casesContents));
   const results: RetrievalCaseResult[] = [];
+  const rerankers = new Set<string>();
 
   for (const evalCase of evalCases) {
     const startedAt = performance.now();
@@ -87,6 +101,11 @@ async function run(config: RetrievalRunConfig): Promise<void> {
         strategy: config.strategy,
         useRerank: config.useRerank,
       });
+      for (const chunk of chunks) {
+        if (chunk.reranker !== undefined) {
+          rerankers.add(chunk.reranker);
+        }
+      }
       const retrieved = evalRetrievedChunkSchema.array().parse(chunks);
       results.push(
         evaluateRetrievalCase({
@@ -114,10 +133,25 @@ async function run(config: RetrievalRunConfig): Promise<void> {
     path.extname(config.casesPath)
   );
   const strategy = `${config.strategy}-${config.useRerank ? "rerank" : "no-rerank"}`;
+  const actualRerankers = config.useRerank
+    ? rerankers.size > 0
+      ? [...rerankers].toSorted()
+      : ["not-invoked"]
+    : ["disabled"];
   const report = buildRetrievalReport(results, {
     dataset,
     strategy,
     k: config.k,
+    sourceRevision: resolveSourceRevision(),
+    caseSetHash: await hashPath(config.casesPath),
+    corpusHash: await hashPath(config.corpusPath),
+    pipelineVersion: RAG_PIPELINE_VERSION,
+    embeddingModel:
+      config.strategy === "lexical"
+        ? null
+        : `zhipu/${RAG_EMBEDDING_MODEL}:${RAG_EMBEDDING_DIMENSIONS}`,
+    rerankers: actualRerankers,
+    minRelevance: null,
   });
   const markdown = renderMarkdownReport(report);
   const timestamp = report.metadata.generatedAt.replaceAll(/[:.]/gu, "-");

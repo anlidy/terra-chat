@@ -125,7 +125,45 @@ async function main(): Promise<void> {
     writeFile(path.join(rawDirectory, "rgb-zh.json"), rgbText),
   ]);
 
-  const financeRows = parseFinanceBenchRows(parseJsonLines(financeText));
+  // Parse document information early so we can filter out documents that are
+  // known to be unavailable before selecting eval cases.
+  const documentInformation = parseJsonLines(documentText).map((row, index) => {
+    const result = documentInformationSchema.safeParse(row);
+    if (!result.success) {
+      throw new Error(
+        `Invalid FinanceBench document row ${index}: ${result.error.message}`
+      );
+    }
+    return result.data;
+  });
+
+  // Some FinanceBench PDF URLs point to decommissioned investor-relations
+  // subdomains that no longer resolve via DNS.  Filter those document names
+  // out of the row pool so we never select cases that depend on them.
+  const DEAD_HOSTS = new Set(["johnsonandjohnson.gcs-web.com"]);
+  const deadDocNames = new Set(
+    documentInformation
+      .filter((doc) => {
+        try {
+          return DEAD_HOSTS.has(new URL(doc.doc_link).hostname);
+        } catch {
+          return false;
+        }
+      })
+      .map((doc) => doc.doc_name)
+  );
+
+  let financeRows = parseFinanceBenchRows(parseJsonLines(financeText));
+  if (deadDocNames.size > 0) {
+    const excludedCount = financeRows.filter((row) =>
+      deadDocNames.has(row.doc_name)
+    ).length;
+    console.warn(
+      `Excluding ${excludedCount} FinanceBench row(s) whose PDFs are no longer available`
+    );
+    financeRows = financeRows.filter((row) => !deadDocNames.has(row.doc_name));
+  }
+
   const selectedFinanceRows = selectFinanceBenchRows(financeRows, 30);
   const selectedFinanceCases = selectedFinanceRows.map(
     normalizeFinanceBenchRow
@@ -171,15 +209,6 @@ async function main(): Promise<void> {
     ),
   ]);
 
-  const documentInformation = parseJsonLines(documentText).map((row, index) => {
-    const result = documentInformationSchema.safeParse(row);
-    if (!result.success) {
-      throw new Error(
-        `Invalid FinanceBench document row ${index}: ${result.error.message}`
-      );
-    }
-    return result.data;
-  });
   const documentUrls = new Map(
     documentInformation.map((document) => [
       document.doc_name,
@@ -198,8 +227,14 @@ async function main(): Promise<void> {
     if (await hasDownloadedFile(outputPath)) {
       continue;
     }
-    const contents = await (await fetchResponse(url)).arrayBuffer();
-    await writeFile(outputPath, new Uint8Array(contents));
+    try {
+      const contents = await (await fetchResponse(url)).arrayBuffer();
+      await writeFile(outputPath, new Uint8Array(contents));
+    } catch (error) {
+      console.warn(
+        `Skipping ${documentName}: download failed — ${(error as Error).message ?? String(error)}`
+      );
+    }
   }
 
   console.log(`FinanceBench cases: ${selectedFinanceCases.length}`);

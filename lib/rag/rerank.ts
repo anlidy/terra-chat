@@ -1,3 +1,5 @@
+import type { RerankerName } from "./types";
+
 /**
  * Reranker — improves retrieval quality via second-stage scoring.
  *
@@ -21,11 +23,13 @@ export async function rerankDocuments<T extends RerankDocument>({
   query: string;
   documents: T[];
   topK?: number;
-}): Promise<Array<T & { rerankScore: number }>> {
+}): Promise<Array<T & { reranker: RerankerName; rerankScore: number }>> {
   if (documents.length <= topK) {
-    return documents
-      .slice(0, topK)
-      .map((document) => ({ ...document, rerankScore: 1 }));
+    return documents.slice(0, topK).map((document) => ({
+      ...document,
+      reranker: "identity" as const,
+      rerankScore: 1,
+    }));
   }
 
   if (process.env.DASHSCOPE_API_KEY) {
@@ -55,7 +59,7 @@ async function rerankWithDashScope<T extends RerankDocument>({
   query: string;
   documents: T[];
   topK?: number;
-}): Promise<Array<T & { rerankScore: number }>> {
+}): Promise<Array<T & { reranker: RerankerName; rerankScore: number }>> {
   const response = await fetch(
     "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
     {
@@ -101,7 +105,11 @@ async function rerankWithDashScope<T extends RerankDocument>({
         `DashScope returned invalid document index: ${result.index}`
       );
     }
-    return { ...document, rerankScore: result.relevance_score };
+    return {
+      ...document,
+      reranker: "dashscope/gte-rerank",
+      rerankScore: result.relevance_score,
+    };
   });
 }
 
@@ -115,9 +123,10 @@ function rerankWithHeuristic<T extends RerankDocument>({
   query: string;
   documents: T[];
   topK?: number;
-}): Array<T & { rerankScore: number }> {
+}): Array<T & { reranker: RerankerName; rerankScore: number }> {
   const results = documents.map((doc) => ({
     ...doc,
+    reranker: "heuristic" as const,
     rerankScore: calculateRelevanceScore(query, doc.content),
   }));
 

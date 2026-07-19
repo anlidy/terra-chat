@@ -3,7 +3,9 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { RAG_PIPELINE_VERSION } from "../../lib/rag/config";
 import { evaluateRetrievalCase } from "./metrics";
+import { hashPath, resolveSourceRevision } from "./provenance";
 import { buildRetrievalReport, renderMarkdownReport } from "./report";
 import {
   evalRetrievedChunkSchema,
@@ -59,6 +61,17 @@ async function main(): Promise<void> {
     dataset: "smoke",
     strategy: "fixture",
     k: K,
+    sourceRevision: resolveSourceRevision(),
+    caseSetHash: await hashPath(
+      path.join(fixturesDirectory, "smoke-cases.jsonl")
+    ),
+    corpusHash: await hashPath(
+      path.join(fixturesDirectory, "smoke-results.json")
+    ),
+    pipelineVersion: RAG_PIPELINE_VERSION,
+    embeddingModel: null,
+    rerankers: ["fixture"],
+    minRelevance: null,
   });
   const markdown = renderMarkdownReport(report);
   const resultsDirectory = path.resolve("evals/results");
