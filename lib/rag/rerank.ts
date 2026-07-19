@@ -97,7 +97,9 @@ async function rerankWithDashScope<T extends RerankDocument>({
   return results.map((result) => {
     const document = documents[result.index];
     if (document === undefined) {
-      throw new Error(`DashScope returned invalid document index: ${result.index}`);
+      throw new Error(
+        `DashScope returned invalid document index: ${result.index}`
+      );
     }
     return { ...document, rerankScore: result.relevance_score };
   });

@@ -4,8 +4,8 @@ import { rerankDocuments } from "./rerank";
 import type {
   LexicalSearchResult,
   RankedSearchResult,
-  RetrievedChunk,
   RetrievalStrategy,
+  RetrievedChunk,
   VectorSearchResult,
 } from "./types";
 
@@ -22,7 +22,7 @@ type HybridSearchInput = {
 };
 
 function rankVectorResults(
-  results: VectorSearchResult[],
+  results: VectorSearchResult[]
 ): RankedSearchResult[] {
   return results.map((result, index) => ({
     ...result,
@@ -32,7 +32,7 @@ function rankVectorResults(
 }
 
 function rankLexicalResults(
-  results: LexicalSearchResult[],
+  results: LexicalSearchResult[]
 ): RankedSearchResult[] {
   return results.map((result, index) => ({
     ...result,
@@ -52,7 +52,7 @@ export async function hybridSearch({
   useRerank = true,
   strategy = "hybrid",
 }: HybridSearchInput): Promise<RetrievedChunk[]> {
-  const searchVector = async (): Promise<VectorSearchResult[]> => {
+  const searchVector = (): Promise<VectorSearchResult[]> => {
     if (embedding === undefined) {
       throw new Error(`An embedding is required for ${strategy} retrieval`);
     }
@@ -85,7 +85,7 @@ export async function hybridSearch({
   }
 
   console.log(
-    `[Retrieval] Strategy: ${strategy}, vector: ${vectorResults.length}, lexical: ${lexicalResults.length}`,
+    `[Retrieval] Strategy: ${strategy}, vector: ${vectorResults.length}, lexical: ${lexicalResults.length}`
   );
   const rankedResults = [
     ...rankVectorResults(vectorResults),

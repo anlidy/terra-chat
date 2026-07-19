@@ -91,9 +91,10 @@ Examples:
         pageNumber: c.pageNumber,
         fusionScore: c.fusionScore,
         rerankScore: c.rerankScore,
-        citation: c.pageNumber !== null
-          ? `${c.fileName} (Page ${c.pageNumber})`
-          : c.fileName,
+        citation:
+          c.pageNumber !== null
+            ? `${c.fileName} (Page ${c.pageNumber})`
+            : c.fileName,
       }));
     },
   });

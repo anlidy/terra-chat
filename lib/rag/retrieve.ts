@@ -1,4 +1,4 @@
-import type { RetrievedChunk, RetrievalStrategy } from "./types";
+import type { RetrievalStrategy, RetrievedChunk } from "./types";
 
 export type DocumentRetrievalInput = {
   chatId: string;
@@ -24,7 +24,7 @@ export function createDocumentRetriever({
   embed,
   search,
 }: RetrieverDependencies): (
-  input: DocumentRetrievalInput,
+  input: DocumentRetrievalInput
 ) => Promise<RetrievedChunk[]> {
   return async (input) => {
     const query = input.query.trim();
@@ -39,7 +39,7 @@ export function createDocumentRetriever({
 }
 
 export async function retrieveDocumentChunks(
-  input: DocumentRetrievalInput,
+  input: DocumentRetrievalInput
 ): Promise<RetrievedChunk[]> {
   const [{ embedText }, { hybridSearch }] = await Promise.all([
     import("./embed"),

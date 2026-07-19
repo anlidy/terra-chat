@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ragEvalCaseSchema, type RagEvalCase } from "../schema";
+import { type RagEvalCase, ragEvalCaseSchema } from "../schema";
 
 const financeBenchEvidenceSchema = z.object({
   evidence_text: z.string(),
@@ -27,8 +27,7 @@ export type FinanceBenchRow = z.infer<typeof financeBenchRowSchema>;
 export function resolveFinanceBenchDocumentUrl(url: string): string {
   const parsed = new URL(url);
   const encodedTarget =
-    parsed.hostname === "www.adobe.com" &&
-    parsed.pathname === "/pdf-page.html"
+    parsed.hostname === "www.adobe.com" && parsed.pathname === "/pdf-page.html"
       ? parsed.searchParams.get("pdfTarget")
       : null;
 
@@ -38,7 +37,9 @@ export function resolveFinanceBenchDocumentUrl(url: string): string {
 
   const target = new URL(Buffer.from(encodedTarget, "base64url").toString());
   if (target.protocol !== "https:" && target.protocol !== "http:") {
-    throw new Error(`Unsupported FinanceBench PDF protocol: ${target.protocol}`);
+    throw new Error(
+      `Unsupported FinanceBench PDF protocol: ${target.protocol}`
+    );
   }
   return target.toString();
 }
@@ -48,7 +49,7 @@ function parseRows(rows: unknown[]): FinanceBenchRow[] {
     const result = financeBenchRowSchema.safeParse(row);
     if (!result.success) {
       throw new Error(
-        `Invalid FinanceBench source row ${index}: ${result.error.message}`,
+        `Invalid FinanceBench source row ${index}: ${result.error.message}`
       );
     }
     return result.data;
@@ -57,10 +58,10 @@ function parseRows(rows: unknown[]): FinanceBenchRow[] {
 
 export function selectFinanceBenchRows(
   rows: FinanceBenchRow[],
-  limit: number,
+  limit: number
 ): FinanceBenchRow[] {
   const sorted = rows.toSorted((left, right) =>
-    left.financebench_id.localeCompare(right.financebench_id),
+    left.financebench_id.localeCompare(right.financebench_id)
   );
   const groups = new Map<string, FinanceBenchRow[]>();
 
@@ -115,10 +116,10 @@ export function normalizeFinanceBenchRow(row: FinanceBenchRow): RagEvalCase {
 
 export function adaptFinanceBenchRows(
   rows: unknown[],
-  limit: number,
+  limit: number
 ): RagEvalCase[] {
   return selectFinanceBenchRows(parseRows(rows), limit).map(
-    normalizeFinanceBenchRow,
+    normalizeFinanceBenchRow
   );
 }
 

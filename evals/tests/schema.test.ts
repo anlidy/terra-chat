@@ -43,7 +43,7 @@ test("parseEvalCases rejects duplicate IDs", () => {
         answerableCase,
         { ...unanswerableCase, id: answerableCase.id },
       ]),
-    new Error("Duplicate evaluation case id: answerable-1"),
+    new Error("Duplicate evaluation case id: answerable-1")
   );
 });
 
@@ -62,7 +62,7 @@ test("evalRetrievedChunkSchema rejects empty required metadata fields", () => {
       evalRetrievedChunkSchema.safeParse({
         ...validChunk,
         [field]: "",
-      }).success,
+      }).success
   );
 
   assert.deepEqual(validationResults, [false, false, false]);
@@ -75,7 +75,7 @@ test("retrieval runner requires a chat id", () => {
         env: {},
         args: ["--cases=evals/cases.jsonl"],
       }),
-    /EVAL_CHAT_ID is required/u,
+    /EVAL_CHAT_ID is required/u
   );
 });
 
@@ -86,7 +86,7 @@ test("retrieval runner rejects unsupported strategies", () => {
         env: { EVAL_CHAT_ID: "chat-id" },
         args: ["--cases=evals/cases.jsonl", "--strategy=keyword"],
       }),
-    /strategy must be vector, lexical, or hybrid/u,
+    /strategy must be vector, lexical, or hybrid/u
   );
 });
 
@@ -106,6 +106,6 @@ test("retrieval runner parses explicit options", () => {
       strategy: "lexical",
       useRerank: false,
       k: 5,
-    },
+    }
   );
 });

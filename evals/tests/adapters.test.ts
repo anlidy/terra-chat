@@ -31,7 +31,7 @@ test("FinanceBench adapter samples reasoning groups round-robin", async () => {
 
   assert.deepEqual(
     adapted.map((item) => item.id),
-    ["financebench_id_00001", "financebench_id_00003"],
+    ["financebench_id_00001", "financebench_id_00003"]
   );
 });
 
@@ -43,13 +43,13 @@ test("FinanceBench adapter resolves Adobe PDF wrapper links", () => {
   assert.equal(resolveFinanceBenchDocumentUrl(wrapper), target);
   assert.equal(
     resolveFinanceBenchDocumentUrl("https://example.com/report.pdf"),
-    "https://example.com/report.pdf",
+    "https://example.com/report.pdf"
   );
 });
 
 test("RGB adapter retains bounded positive and negative documents", async () => {
   const rows = JSON.parse(
-    await readFile("evals/fixtures/raw/rgb-zh.json", "utf8"),
+    await readFile("evals/fixtures/raw/rgb-zh.json", "utf8")
   ) as unknown[];
   const adapted = adaptRgbRows(rows, 1);
 
@@ -66,7 +66,7 @@ test("RGB adapter retains bounded positive and negative documents", async () => 
 
 test("RGB adapter flattens upstream answer aliases", async () => {
   const rows = JSON.parse(
-    await readFile("evals/fixtures/raw/rgb-zh.json", "utf8"),
+    await readFile("evals/fixtures/raw/rgb-zh.json", "utf8")
   ) as unknown[];
   const adapted = adaptRgbRows(rows, 2);
 

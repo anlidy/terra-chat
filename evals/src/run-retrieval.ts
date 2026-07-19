@@ -4,7 +4,7 @@ import { performance } from "node:perf_hooks";
 
 import { retrieveDocumentChunks } from "../../lib/rag/retrieve";
 import type { RetrievalStrategy } from "../../lib/rag/types";
-import { evaluateRetrievalCase } from "./metrics";
+import { evaluateRetrievalCase, type RetrievalCaseResult } from "./metrics";
 import { buildRetrievalReport, renderMarkdownReport } from "./report";
 import { evalRetrievedChunkSchema, parseEvalCases } from "./schema";
 
@@ -20,7 +20,9 @@ export type RetrievalRunConfig = {
 
 function optionValue(args: string[], name: string): string | undefined {
   const prefix = `--${name}=`;
-  return args.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
+  return args
+    .find((argument) => argument.startsWith(prefix))
+    ?.slice(prefix.length);
 }
 
 export function parseRetrievalRunConfig({
@@ -73,7 +75,7 @@ function errorMessage(error: unknown): string {
 async function run(config: RetrievalRunConfig): Promise<void> {
   const casesContents = await readFile(config.casesPath, "utf8");
   const evalCases = parseEvalCases(parseJsonLines(casesContents));
-  const results = [];
+  const results: RetrievalCaseResult[] = [];
 
   for (const evalCase of evalCases) {
     const startedAt = performance.now();
@@ -92,7 +94,7 @@ async function run(config: RetrievalRunConfig): Promise<void> {
           retrieved,
           latencyMs: performance.now() - startedAt,
           k: config.k,
-        }),
+        })
       );
     } catch (error) {
       results.push({
@@ -107,7 +109,10 @@ async function run(config: RetrievalRunConfig): Promise<void> {
     }
   }
 
-  const dataset = path.basename(config.casesPath, path.extname(config.casesPath));
+  const dataset = path.basename(
+    config.casesPath,
+    path.extname(config.casesPath)
+  );
   const strategy = `${config.strategy}-${config.useRerank ? "rerank" : "no-rerank"}`;
   const report = buildRetrievalReport(results, {
     dataset,
@@ -123,7 +128,7 @@ async function run(config: RetrievalRunConfig): Promise<void> {
   await Promise.all([
     writeFile(
       path.join(resultsDirectory, `${fileStem}.json`),
-      `${JSON.stringify(report, null, 2)}\n`,
+      `${JSON.stringify(report, null, 2)}\n`
     ),
     writeFile(path.join(resultsDirectory, `${fileStem}.md`), markdown),
   ]);

@@ -59,7 +59,7 @@ test("RRF keeps distinct chunks with the same filename and index", () => {
 
   assert.deepEqual(
     fused.map((item) => item.chunkId),
-    ["chunk-a", "chunk-b"],
+    ["chunk-a", "chunk-b"]
   );
 });
 

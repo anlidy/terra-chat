@@ -37,13 +37,18 @@ async function fetchResponse(url: string): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(15_000),
+      });
       if (!response.ok) {
         throw new Error(`Download failed (${response.status}) for ${url}`);
       }
       return response;
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith("Download failed")) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith("Download failed")
+      ) {
         throw error;
       }
       lastError = error;
@@ -95,9 +100,7 @@ async function hasDownloadedFile(filePath: string): Promise<boolean> {
 async function main(): Promise<void> {
   const rawDirectory = path.resolve("evals/data/raw");
   const normalizedDirectory = path.resolve("evals/data/normalized");
-  const financeCorpusDirectory = path.resolve(
-    "evals/data/corpus/financebench",
-  );
+  const financeCorpusDirectory = path.resolve("evals/data/corpus/financebench");
   const rgbCorpusDirectory = path.resolve("evals/data/corpus/rgb-zh");
   await Promise.all(
     [
@@ -105,7 +108,7 @@ async function main(): Promise<void> {
       normalizedDirectory,
       financeCorpusDirectory,
       rgbCorpusDirectory,
-    ].map((directory) => mkdir(directory, { recursive: true })),
+    ].map((directory) => mkdir(directory, { recursive: true }))
   );
 
   const [financeText, documentText, rgbText] = await Promise.all([
@@ -117,7 +120,7 @@ async function main(): Promise<void> {
     writeFile(path.join(rawDirectory, "financebench.jsonl"), financeText),
     writeFile(
       path.join(rawDirectory, "financebench-documents.jsonl"),
-      documentText,
+      documentText
     ),
     writeFile(path.join(rawDirectory, "rgb-zh.json"), rgbText),
   ]);
@@ -125,22 +128,22 @@ async function main(): Promise<void> {
   const financeRows = parseFinanceBenchRows(parseJsonLines(financeText));
   const selectedFinanceRows = selectFinanceBenchRows(financeRows, 30);
   const selectedFinanceCases = selectedFinanceRows.map(
-    normalizeFinanceBenchRow,
+    normalizeFinanceBenchRow
   );
   const selectedIds = new Set(
-    selectedFinanceRows.map((row) => row.financebench_id),
+    selectedFinanceRows.map((row) => row.financebench_id)
   );
   const selectedDocuments = new Set(
-    selectedFinanceRows.map((row) => row.doc_name),
+    selectedFinanceRows.map((row) => row.doc_name)
   );
   const unanswerableCases = financeRows
     .toSorted((left, right) =>
-      left.financebench_id.localeCompare(right.financebench_id),
+      left.financebench_id.localeCompare(right.financebench_id)
     )
     .filter(
       (row) =>
         !selectedIds.has(row.financebench_id) &&
-        !selectedDocuments.has(row.doc_name),
+        !selectedDocuments.has(row.doc_name)
     )
     .slice(0, 5)
     .map(normalizeFinanceBenchRow)
@@ -154,17 +157,17 @@ async function main(): Promise<void> {
   await Promise.all([
     writeFile(
       path.join(normalizedDirectory, "financebench.jsonl"),
-      toJsonLines([...selectedFinanceCases, ...unanswerableCases]),
+      toJsonLines([...selectedFinanceCases, ...unanswerableCases])
     ),
     writeFile(
       path.join(normalizedDirectory, "rgb-zh.jsonl"),
-      toJsonLines(rgb.cases),
+      toJsonLines(rgb.cases)
     ),
     ...rgb.documents.map((document) =>
       writeFile(
         path.join(rgbCorpusDirectory, `${document.id}.txt`),
-        `${document.content}\n`,
-      ),
+        `${document.content}\n`
+      )
     ),
   ]);
 
@@ -172,7 +175,7 @@ async function main(): Promise<void> {
     const result = documentInformationSchema.safeParse(row);
     if (!result.success) {
       throw new Error(
-        `Invalid FinanceBench document row ${index}: ${result.error.message}`,
+        `Invalid FinanceBench document row ${index}: ${result.error.message}`
       );
     }
     return result.data;
@@ -181,7 +184,7 @@ async function main(): Promise<void> {
     documentInformation.map((document) => [
       document.doc_name,
       resolveFinanceBenchDocumentUrl(document.doc_link),
-    ]),
+    ])
   );
   for (const documentName of selectedDocuments) {
     const url = documentUrls.get(documentName);
@@ -190,7 +193,7 @@ async function main(): Promise<void> {
     }
     const outputPath = path.join(
       financeCorpusDirectory,
-      `${safeDocumentName(documentName)}.pdf`,
+      `${safeDocumentName(documentName)}.pdf`
     );
     if (await hasDownloadedFile(outputPath)) {
       continue;

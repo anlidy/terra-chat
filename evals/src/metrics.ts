@@ -24,11 +24,11 @@ function fileNameWithoutExtension(fileName: string): string {
 
 export function isRelevant(
   evalCase: RagEvalCase,
-  chunk: EvalRetrievedChunk,
+  chunk: EvalRetrievedChunk
 ): boolean {
   const documentMatches = evalCase.relevantDocumentIds.some(
     (id) =>
-      id === chunk.resourceId || id === fileNameWithoutExtension(chunk.fileName),
+      id === chunk.resourceId || id === fileNameWithoutExtension(chunk.fileName)
   );
 
   if (!documentMatches) {
@@ -40,7 +40,7 @@ export function isRelevant(
     evalCase.evidencePages.includes(chunk.pageNumber);
   const normalizedContent = normalizeEvidenceText(chunk.content);
   const evidenceMatches = evalCase.evidenceTexts.some((evidence) =>
-    normalizedContent.includes(normalizeEvidenceText(evidence)),
+    normalizedContent.includes(normalizeEvidenceText(evidence))
   );
 
   return pageMatches || evidenceMatches;
@@ -55,7 +55,7 @@ function discountedCumulativeGain(relevance: boolean[]): number {
   return relevance.reduce(
     (total, relevant, index) =>
       relevant ? total + 1 / Math.log2(index + 2) : total,
-    0,
+    0
   );
 }
 
@@ -67,8 +67,9 @@ export function ndcgAtK(relevance: boolean[], k: number): number {
     return 0;
   }
 
-  const ideal = Array.from({ length: topK.length }, (_, index) =>
-    index < relevantCount,
+  const ideal = Array.from(
+    { length: topK.length },
+    (_, index) => index < relevantCount
   );
   return discountedCumulativeGain(topK) / discountedCumulativeGain(ideal);
 }
@@ -100,7 +101,7 @@ export function evaluateRetrievalCase({
   const topK = retrieved.slice(0, k);
   const relevance = topK.map((chunk) => isRelevant(evalCase, chunk));
   const relevantRanks = relevance.flatMap((relevant, index) =>
-    relevant ? [index + 1] : [],
+    relevant ? [index + 1] : []
   );
 
   return {

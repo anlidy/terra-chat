@@ -8,7 +8,7 @@ type FusionCandidate = {
 
 export function reciprocalRankFusion(
   results: RankedSearchResult[],
-  k = 60,
+  k = 60
 ): RetrievedChunk[] {
   const candidates = new Map<string, FusionCandidate>();
 
@@ -28,20 +28,20 @@ export function reciprocalRankFusion(
     if (result.source === "vector") {
       candidate.vectorRank = Math.min(
         candidate.vectorRank ?? Number.POSITIVE_INFINITY,
-        result.rank,
+        result.rank
       );
       candidate.chunk.vectorDistance = Math.min(
         candidate.chunk.vectorDistance ?? Number.POSITIVE_INFINITY,
-        result.vectorDistance,
+        result.vectorDistance
       );
     } else {
       candidate.lexicalRankPosition = Math.min(
         candidate.lexicalRankPosition ?? Number.POSITIVE_INFINITY,
-        result.rank,
+        result.rank
       );
       candidate.chunk.lexicalRank = Math.max(
         candidate.chunk.lexicalRank ?? Number.NEGATIVE_INFINITY,
-        result.lexicalRank,
+        result.lexicalRank
       );
     }
 
@@ -53,12 +53,7 @@ export function reciprocalRankFusion(
       ...chunk,
       fusionScore:
         (vectorRank === undefined ? 0 : 1 / (k + vectorRank)) +
-        (lexicalRankPosition === undefined
-          ? 0
-          : 1 / (k + lexicalRankPosition)),
+        (lexicalRankPosition === undefined ? 0 : 1 / (k + lexicalRankPosition)),
     }))
-    .sort(
-      (left, right) =>
-        (right.fusionScore ?? 0) - (left.fusionScore ?? 0),
-    );
+    .sort((left, right) => (right.fusionScore ?? 0) - (left.fusionScore ?? 0));
 }

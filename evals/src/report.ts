@@ -38,7 +38,7 @@ function average(values: number[]): number {
 
 function metricValues(
   results: RetrievalCaseResult[],
-  metric: "recallAtK" | "mrr" | "ndcgAtK",
+  metric: "recallAtK" | "mrr" | "ndcgAtK"
 ): number[] {
   return results.flatMap((result) => {
     const value = result[metric];
@@ -48,12 +48,12 @@ function metricValues(
 
 export function buildRetrievalReport(
   results: RetrievalCaseResult[],
-  options: ReportOptions,
+  options: ReportOptions
 ): RetrievalReport {
   const answerable = results.filter((result) => result.answerable);
   const unanswerable = results.filter((result) => !result.answerable);
   const falseRetrievals = unanswerable.filter(
-    (result) => result.falseRetrieval,
+    (result) => result.falseRetrieval
   ).length;
   const latencies = results.map((result) => result.latencyMs);
 
@@ -95,7 +95,7 @@ export function renderMarkdownReport(report: RetrievalReport): string {
     (result) =>
       result.error !== undefined ||
       (result.answerable && result.recallAtK === 0) ||
-      result.falseRetrieval,
+      result.falseRetrieval
   );
   const failureRows =
     failedCases.length === 0

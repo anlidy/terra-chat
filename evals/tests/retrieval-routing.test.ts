@@ -16,7 +16,7 @@ test("document retrieval consumers use the shared retrieval service", async () =
     assert.doesNotMatch(
       source,
       /import[^;]*(?:embedText|similaritySearch|hybridSearch)/u,
-      path,
+      path
     );
   }
 });

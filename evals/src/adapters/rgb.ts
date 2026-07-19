@@ -1,12 +1,12 @@
 import { z } from "zod";
 
-import { ragEvalCaseSchema, type RagEvalCase } from "../schema";
+import { type RagEvalCase, ragEvalCaseSchema } from "../schema";
 
 const rgbRowSchema = z.object({
   id: z.number().int().nonnegative(),
   query: z.string().min(1),
   answer: z.array(
-    z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
+    z.union([z.string().min(1), z.array(z.string().min(1)).min(1)])
   ),
   positive: z.array(z.string().min(1)).min(1),
   negative: z.array(z.string().min(1)),
@@ -30,7 +30,9 @@ function parseRows(rows: unknown[]): RgbRow[] {
   return rows.map((row, index) => {
     const result = rgbRowSchema.safeParse(row);
     if (!result.success) {
-      throw new Error(`Invalid RGB source row ${index}: ${result.error.message}`);
+      throw new Error(
+        `Invalid RGB source row ${index}: ${result.error.message}`
+      );
     }
     return result.data;
   });
@@ -69,7 +71,7 @@ export function adaptRgbRows(rows: unknown[], limit: number): AdaptedRgb {
         category: "fact",
         language: "zh",
         answerable: true,
-      }),
+      })
     );
     documents.push(...positives, ...negatives);
   }

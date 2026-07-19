@@ -16,20 +16,20 @@ const chunk: RetrievedChunk = {
 test("document retriever embeds once and forwards normalized input", async () => {
   const calls: string[] = [];
   const retrieve = createDocumentRetriever({
-    embed: async (query) => {
+    embed: (query) => {
       calls.push(`embed:${query}`);
-      return [0.1, 0.2];
+      return Promise.resolve([0.1, 0.2]);
     },
-    search: async (input) => {
+    search: (input) => {
       calls.push(`search:${input.query}`);
       assert.deepEqual(input.embedding, [0.1, 0.2]);
-      return [chunk];
+      return Promise.resolve([chunk]);
     },
   });
 
   assert.deepEqual(
     await retrieve({ chatId: "chat", query: " policy ", limit: 5 }),
-    [chunk],
+    [chunk]
   );
   assert.deepEqual(calls, ["embed:policy", "search:policy"]);
 });
@@ -37,14 +37,14 @@ test("document retriever embeds once and forwards normalized input", async () =>
 test("lexical retrieval skips embedding", async () => {
   let embedded = false;
   const retrieve = createDocumentRetriever({
-    embed: async () => {
+    embed: () => {
       embedded = true;
-      return [0.1];
+      return Promise.resolve([0.1]);
     },
-    search: async (input) => {
+    search: (input) => {
       assert.equal(input.strategy, "lexical");
       assert.equal(input.embedding, undefined);
-      return [chunk];
+      return Promise.resolve([chunk]);
     },
   });
 
@@ -54,12 +54,12 @@ test("lexical retrieval skips embedding", async () => {
 
 test("document retriever rejects an empty query", async () => {
   const retrieve = createDocumentRetriever({
-    embed: async () => [0.1],
-    search: async () => [chunk],
+    embed: () => Promise.resolve([0.1]),
+    search: () => Promise.resolve([chunk]),
   });
 
   await assert.rejects(
     () => retrieve({ chatId: "chat", query: "   " }),
-    /query must not be empty/i,
+    /query must not be empty/i
   );
 });

@@ -23,7 +23,7 @@ function parseJsonLines(contents: string): unknown[] {
 
 function evaluateFixture(
   evalCases: RagEvalCase[],
-  rankedResults: z.infer<typeof rankedResultsSchema>,
+  rankedResults: z.infer<typeof rankedResultsSchema>
 ) {
   return evalCases.map((evalCase) => {
     const retrieved = rankedResults[evalCase.id];
@@ -44,15 +44,15 @@ async function main(): Promise<void> {
   const fixturesDirectory = path.resolve("evals/fixtures");
   const casesContents = await readFile(
     path.join(fixturesDirectory, "smoke-cases.jsonl"),
-    "utf8",
+    "utf8"
   );
   const rankedResultsContents = await readFile(
     path.join(fixturesDirectory, "smoke-results.json"),
-    "utf8",
+    "utf8"
   );
   const evalCases = parseEvalCases(parseJsonLines(casesContents));
   const rankedResults = rankedResultsSchema.parse(
-    JSON.parse(rankedResultsContents),
+    JSON.parse(rankedResultsContents)
   );
   const results = evaluateFixture(evalCases, rankedResults);
   const report = buildRetrievalReport(results, {
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   await Promise.all([
     writeFile(
       path.join(resultsDirectory, "smoke-latest.json"),
-      `${JSON.stringify(report, null, 2)}\n`,
+      `${JSON.stringify(report, null, 2)}\n`
     ),
     writeFile(path.join(resultsDirectory, "smoke-latest.md"), markdown),
   ]);

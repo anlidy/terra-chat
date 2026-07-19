@@ -72,7 +72,7 @@ test("relevance requires a gold document and matches normalized evidence", () =>
       pageNumber: null,
       content: "Submit—within SEVEN days!",
     }),
-    true,
+    true
   );
   assert.equal(
     isRelevant(evalCase, {
@@ -80,7 +80,7 @@ test("relevance requires a gold document and matches normalized evidence", () =>
       resourceId: "other",
       fileName: "other.pdf",
     }),
-    false,
+    false
   );
 });
 
