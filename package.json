@@ -16,6 +16,7 @@
     "db:check": "drizzle-kit check",
     "db:up": "drizzle-kit up",
     "test": "export PLAYWRIGHT=True && pnpm exec playwright test",
+    "test:unit": "tsx --test evals/tests/*.test.ts lib/rag/*.test.ts",
     "prepare": "husky"
   },
   "dependencies": {
