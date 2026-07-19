@@ -1,0 +1,9 @@
+{
+  "name": "FinanceBench open-source sample",
+  "source": "https://github.com/patronus-ai/financebench",
+  "questionsUrl": "https://raw.githubusercontent.com/patronus-ai/financebench/main/data/financebench_open_source.jsonl",
+  "documentsUrl": "https://raw.githubusercontent.com/patronus-ai/financebench/main/data/financebench_document_information.jsonl",
+  "licenseNote": "FinanceBench publishes this as an open-source 150-case sample but does not state a repository license. Retain upstream attribution and source links.",
+  "selection": "Sort by financebench_id and sample 30 cases round-robin across question_reasoning. Evidence page numbers are preserved as the upstream zero-indexed values.",
+  "retrievedOn": "2026-07-19"
+}

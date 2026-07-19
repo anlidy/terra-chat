@@ -18,7 +18,7 @@
     "test": "export PLAYWRIGHT=True && pnpm exec playwright test",
     "test:unit": "tsx --test evals/tests/*.test.ts lib/rag/*.test.ts",
     "eval:rag:smoke": "tsx evals/src/run-smoke.ts",
-    "eval:rag:download": "tsx evals/src/download-datasets.ts",
+    "eval:rag:download": "NODE_USE_ENV_PROXY=1 tsx evals/src/download-datasets.ts",
     "prepare": "husky"
   },
   "dependencies": {

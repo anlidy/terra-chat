@@ -1,0 +1,9 @@
+{
+  "name": "RGB Chinese refined dataset",
+  "source": "https://github.com/chen700564/RGB",
+  "dataUrl": "https://raw.githubusercontent.com/chen700564/RGB/master/data/zh_refine.json",
+  "license": "CC BY-NC-SA 4.0",
+  "licenseNote": "Noncommercial use only; attribution and share-alike terms apply.",
+  "selection": "Sort by numeric id, select the first 15 cases, and retain up to two positive and three negative passages per case.",
+  "retrievedOn": "2026-07-19"
+}
