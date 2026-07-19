@@ -55,3 +55,8 @@ tsconfig.tsbuildinfo
 
 # Isolated feature worktrees
 .worktrees/
+
+# RAG evaluation artifacts
+/evals/data/
+/evals/results/*
+!/evals/results/.gitkeep
