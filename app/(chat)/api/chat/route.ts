@@ -44,13 +44,12 @@ import {
   getMessagesByChatId,
   saveChat,
   saveMessages,
-  similaritySearch,
   updateChatTitleById,
   updateMessage,
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
-import { embedText } from "@/lib/rag/embed";
+import { retrieveDocumentChunks } from "@/lib/rag/retrieve";
 import { checkIpRateLimit } from "@/lib/ratelimit";
 import type { ChatMessage } from "@/lib/types";
 import { convertToUIMessages, generateUUID } from "@/lib/utils";
@@ -387,8 +386,12 @@ export async function POST(request: Request) {
             queryText.length > 10 && !isVagueQuery(queryText);
 
           if (queryText && isSpecificQuery) {
-            const embedding = await embedText(queryText);
-            const chunks = await similaritySearch({ chatId: id, embedding });
+            const chunks = await retrieveDocumentChunks({
+              chatId: id,
+              query: queryText,
+              limit: 5,
+              useRerank: true,
+            });
             console.log("[RAG Debug] chunks found:", chunks.length);
             if (chunks.length > 0) {
               const proactiveContextMsg = ragContextPrompt(chunks);

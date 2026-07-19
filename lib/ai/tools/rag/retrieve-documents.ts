@@ -1,8 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { getDocumentsByChat } from "@/lib/db/queries";
-import { embedText } from "@/lib/rag/embed";
-import { hybridSearch } from "@/lib/rag/hybrid-search";
+import { retrieveDocumentChunks } from "@/lib/rag/retrieve";
 
 export const retrieveDocuments = ({ chatId }: { chatId: string }) =>
   tool({
@@ -75,25 +74,27 @@ Examples:
         };
       }
 
-      const embedding = await embedText(query);
-      const chunks = await hybridSearch({
+      const chunks = await retrieveDocumentChunks({
         chatId,
         query,
-        embedding,
         documentIds: readyDocs.map((d) => d.id),
       });
       console.log(
         `[RAG Tool] Retrieved ${chunks.length} chunks for query: ${query}`
       );
       return chunks.map((c) => ({
+        chunkId: c.chunkId,
+        resourceId: c.resourceId,
         content: c.content,
         fileName: c.fileName,
         chunkIndex: c.chunkIndex,
         pageNumber: c.pageNumber,
-        score: c.score,
-        citation: c.pageNumber
-          ? `${c.fileName} (Page ${c.pageNumber})`
-          : c.fileName,
+        fusionScore: c.fusionScore,
+        rerankScore: c.rerankScore,
+        citation:
+          c.pageNumber !== null
+            ? `${c.fileName} (Page ${c.pageNumber})`
+            : c.fileName,
       }));
     },
   });

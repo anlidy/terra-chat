@@ -251,7 +251,7 @@ export const documentChunk = pgTable(
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (table) => ({
-    // Full-text search index for BM25 (using 'simple' for multilingual support)
+    // PostgreSQL full-text index using 'simple' for multilingual support
     contentSearchIdx: index("content_search_idx").using(
       "gin",
       sql`to_tsvector('simple', ${table.content})`

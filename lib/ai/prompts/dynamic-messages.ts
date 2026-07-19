@@ -10,6 +10,7 @@
  * - User query context
  */
 
+import type { RetrievedChunk } from "@/lib/rag/types";
 import type { DocsStatusResult } from "./types";
 
 /**
@@ -67,9 +68,7 @@ export function buildDocsStatusMessage(status: DocsStatusResult): string {
  * Build a retrieved context message for proactive document retrieval
  * Wraps document excerpts with XML tags for clear structure
  */
-export function ragContextPrompt(
-  chunks: Array<{ content: string; fileName: string; chunkIndex: number }>
-): string {
+export function ragContextPrompt(chunks: RetrievedChunk[]): string {
   const excerpts = chunks
     .map(
       (c, idx) =>

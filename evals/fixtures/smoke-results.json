@@ -1,0 +1,31 @@
+{
+  "handbook-policy": [
+    {
+      "chunkId": "noise-1",
+      "resourceId": "other",
+      "content": "Unrelated information.",
+      "chunkIndex": 0,
+      "fileName": "other.pdf",
+      "pageNumber": 1
+    },
+    {
+      "chunkId": "handbook-12",
+      "resourceId": "handbook",
+      "content": "Submit the request within seven days.",
+      "chunkIndex": 4,
+      "fileName": "handbook.pdf",
+      "pageNumber": 12
+    }
+  ],
+  "zh-refund-policy": [
+    {
+      "chunkId": "refund-3",
+      "resourceId": "local-resource-id",
+      "content": "退款申请必须在购买后三十天内提交。",
+      "chunkIndex": 2,
+      "fileName": "refund-policy.pdf",
+      "pageNumber": 3
+    }
+  ],
+  "unknown-launch-date": []
+}

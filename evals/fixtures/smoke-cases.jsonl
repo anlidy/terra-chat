@@ -1,0 +1,3 @@
+{"id":"handbook-policy","query":"How soon must a request be submitted?","expectedAnswer":"Within seven days.","relevantDocumentIds":["handbook"],"evidenceTexts":["Submit the request within seven days."],"evidencePages":[12],"category":"fact","language":"en","answerable":true}
+{"id":"zh-refund-policy","query":"退款申请应在多少天内提交？","expectedAnswer":"三十天内。","relevantDocumentIds":["refund-policy"],"evidenceTexts":["退款申请必须在购买后三十天内提交。"],"evidencePages":[3],"category":"fact","language":"zh","answerable":true}
+{"id":"unknown-launch-date","query":"产品下一次发布日期是什么时候？","expectedAnswer":"","relevantDocumentIds":[],"evidenceTexts":[],"evidencePages":[],"category":"unanswerable","language":"zh","answerable":false}

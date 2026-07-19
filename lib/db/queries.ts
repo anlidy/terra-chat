@@ -955,16 +955,20 @@ export async function similaritySearch({
 }) {
   try {
     const embeddingStr = `[${embedding.join(",")}]`;
+    const vectorDistance = sql<number>`${documentChunk.embedding} <=> ${embeddingStr}::vector`;
     const conditions = [eq(documentChunk.chatId, chatId)];
     if (documentIds && documentIds.length > 0) {
       conditions.push(inArray(documentResource.id, documentIds));
     }
     return await db
       .select({
+        chunkId: documentChunk.id,
+        resourceId: documentResource.id,
         content: documentChunk.content,
         chunkIndex: documentChunk.chunkIndex,
         fileName: documentResource.fileName,
         pageNumber: documentChunk.pageNumber,
+        vectorDistance,
       })
       .from(documentChunk)
       .innerJoin(
@@ -972,7 +976,7 @@ export async function similaritySearch({
         eq(documentChunk.resourceId, documentResource.id)
       )
       .where(and(...conditions))
-      .orderBy(sql`${documentChunk.embedding} <=> ${embeddingStr}::vector`)
+      .orderBy(vectorDistance)
       .limit(limit);
   } catch (error) {
     throw new ChatbotError("bad_request:database", error);
@@ -1002,11 +1006,11 @@ function buildTsQuery(query: string): string {
 }
 
 /**
- * BM25 full-text search using PostgreSQL's ts_rank_cd
+ * Lexical full-text search using PostgreSQL's ts_rank_cd.
  * Uses 'simple' configuration for multilingual support (Chinese + English)
  * Chinese queries are segmented with jieba for better recall
  */
-export async function bm25Search({
+export async function lexicalSearch({
   chatId,
   query,
   documentIds,
@@ -1019,6 +1023,7 @@ export async function bm25Search({
 }) {
   try {
     const tsQuery = buildTsQuery(query);
+    const lexicalRank = sql<number>`ts_rank_cd(to_tsvector('simple', ${documentChunk.content}), to_tsquery('simple', ${tsQuery}))`;
 
     const conditions: SQL[] = [
       eq(documentChunk.chatId, chatId),
@@ -1030,12 +1035,13 @@ export async function bm25Search({
 
     return await db
       .select({
-        id: documentChunk.id,
+        chunkId: documentChunk.id,
+        resourceId: documentResource.id,
         content: documentChunk.content,
         chunkIndex: documentChunk.chunkIndex,
         fileName: documentResource.fileName,
         pageNumber: documentChunk.pageNumber,
-        rank: sql<number>`ts_rank_cd(to_tsvector('simple', ${documentChunk.content}), to_tsquery('simple', ${tsQuery}))`,
+        lexicalRank,
       })
       .from(documentChunk)
       .innerJoin(
@@ -1043,12 +1049,10 @@ export async function bm25Search({
         eq(documentChunk.resourceId, documentResource.id)
       )
       .where(and(...conditions))
-      .orderBy(
-        sql`ts_rank_cd(to_tsvector('simple', ${documentChunk.content}), to_tsquery('simple', ${tsQuery})) DESC`
-      )
+      .orderBy(sql`${lexicalRank} DESC`)
       .limit(limit);
   } catch (error) {
-    console.error("[BM25 Search Error]", error);
+    console.error("[Lexical Search Error]", error);
     // Return empty array if query parsing fails
     return [];
   }
