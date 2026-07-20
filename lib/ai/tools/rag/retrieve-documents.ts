@@ -92,9 +92,9 @@ Examples:
         fusionScore: c.fusionScore,
         rerankScore: c.rerankScore,
         citation:
-          c.pageNumber !== null
-            ? `${c.fileName} (Page ${c.pageNumber})`
-            : c.fileName,
+          c.pageNumber === null
+            ? c.fileName
+            : `${c.fileName} (Page ${c.pageNumber})`,
       }));
     },
   });
