@@ -50,8 +50,9 @@ test("evaluateRetrievalCase matches document and evidence page", () => {
         chunkIndex: 0,
         fileName: "other.pdf",
         pageNumber: 1,
+        fusionScore: 0.25,
       },
-      relevantChunk,
+      { ...relevantChunk, vectorDistance: 0.2 },
     ],
     latencyMs: 25,
     k: 5,
@@ -61,6 +62,28 @@ test("evaluateRetrievalCase matches document and evidence page", () => {
   assert.equal(result.mrr, 0.5);
   assert.equal(result.ndcgAtK, 1 / Math.log2(3));
   assert.equal(result.falseRetrieval, false);
+  assert.deepEqual(result.topResults, [
+    {
+      rank: 1,
+      chunkId: "wrong-1",
+      resourceId: "other",
+      fileName: "other.pdf",
+      pageNumber: 1,
+      contentPreview: "noise",
+      relevant: false,
+      fusionScore: 0.25,
+    },
+    {
+      rank: 2,
+      chunkId: "right-1",
+      resourceId: "handbook",
+      fileName: "handbook.pdf",
+      pageNumber: 12,
+      contentPreview: "Submit within seven days.",
+      relevant: true,
+      vectorDistance: 0.2,
+    },
+  ]);
 });
 
 test("relevance requires a gold document and matches normalized evidence", () => {

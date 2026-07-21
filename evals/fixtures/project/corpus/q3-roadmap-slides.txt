@@ -1,0 +1,17 @@
+# Q3 Roadmap Review
+
+## Slide 1 — Reliability
+- Reduce stuck ingestion jobs below 0.5%.
+- Add resumable processing with three retry attempts.
+
+## Slide 2 — Retrieval quality
+- Establish bilingual answer and citation baselines.
+- Target citation correctness of 95% before general availability.
+
+## Slide 3 — Rollout
+- Run a 10% internal shadow deployment in August.
+- Expand to a 30% customer preview only after two stable weeks.
+
+## 幻灯片 4 — 明确不做
+- 第三季度不更换向量数据库。
+- 第三季度不引入自动执行文档指令的能力。

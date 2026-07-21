@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { parseRetrievalRunConfig } from "../src/run-retrieval";
@@ -36,6 +37,33 @@ test("parseEvalCases accepts answerable and unanswerable cases", () => {
   assert.deepEqual(parsed[1], unanswerableCase);
 });
 
+test("project scenarios cover the required languages and categories", async () => {
+  const contents = await readFile("evals/fixtures/project/cases.jsonl", "utf8");
+  const parsed = parseEvalCases(
+    contents
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as unknown)
+  );
+
+  assert.equal(parsed.length, 10);
+  assert.deepEqual(
+    new Set(parsed.map((evalCase) => evalCase.language)),
+    new Set(["en", "zh"])
+  );
+  assert.deepEqual(
+    new Set(parsed.map((evalCase) => evalCase.category)),
+    new Set([
+      "fact",
+      "summary",
+      "multi-document-comparison",
+      "table",
+      "slides",
+      "unanswerable",
+    ])
+  );
+});
+
 test("parseEvalCases rejects duplicate IDs", () => {
   assert.throws(
     () =>
@@ -66,6 +94,44 @@ test("evalRetrievedChunkSchema rejects empty required metadata fields", () => {
   );
 
   assert.deepEqual(validationResults, [false, false, false]);
+});
+
+test("evalRetrievedChunkSchema preserves retrieval diagnostics", () => {
+  const parsed = evalRetrievedChunkSchema.parse({
+    chunkId: "chunk-1",
+    resourceId: "resource-1",
+    content: "Refunds are available within 30 days.",
+    chunkIndex: 0,
+    fileName: "refund-policy.pdf",
+    pageNumber: 2,
+    vectorDistance: 0.25,
+    lexicalRank: 0.5,
+    fusionScore: 0.75,
+    rerankScore: 0.9,
+    reranker: "aliyun/qwen3-rerank",
+    rerankerAttempt: {
+      reranker: "aliyun/qwen3-rerank",
+      status: "succeeded",
+    },
+  });
+
+  assert.deepEqual(parsed, {
+    chunkId: "chunk-1",
+    resourceId: "resource-1",
+    content: "Refunds are available within 30 days.",
+    chunkIndex: 0,
+    fileName: "refund-policy.pdf",
+    pageNumber: 2,
+    vectorDistance: 0.25,
+    lexicalRank: 0.5,
+    fusionScore: 0.75,
+    rerankScore: 0.9,
+    reranker: "aliyun/qwen3-rerank",
+    rerankerAttempt: {
+      reranker: "aliyun/qwen3-rerank",
+      status: "succeeded",
+    },
+  });
 });
 
 test("retrieval runner requires a chat id", () => {

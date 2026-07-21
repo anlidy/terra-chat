@@ -10,7 +10,7 @@ import {
   RAG_PIPELINE_VERSION,
 } from "../../lib/rag/config";
 import { retrieveDocumentChunks } from "../../lib/rag/retrieve";
-import type { RetrievalStrategy } from "../../lib/rag/types";
+import type { RerankerAttempt, RetrievalStrategy } from "../../lib/rag/types";
 import { evaluateRetrievalCase, type RetrievalCaseResult } from "./metrics";
 import {
   hashFiles,
@@ -118,6 +118,7 @@ export async function runRetrieval(
     );
   }
   const results: RetrievalCaseResult[] = [];
+  const rerankerAttempts = new Map<string, RerankerAttempt>();
   const rerankers = new Set<string>();
   let errorCount = 0;
   const runStartedAt = performance.now();
@@ -140,6 +141,12 @@ export async function runRetrieval(
       for (const chunk of chunks) {
         if (chunk.reranker !== undefined) {
           rerankers.add(chunk.reranker);
+        }
+        if (chunk.rerankerAttempt !== undefined) {
+          rerankerAttempts.set(
+            JSON.stringify(chunk.rerankerAttempt),
+            chunk.rerankerAttempt
+          );
         }
       }
       const retrieved = evalRetrievedChunkSchema.array().parse(chunks);
@@ -204,6 +211,7 @@ export async function runRetrieval(
       config.strategy === "lexical"
         ? null
         : `zhipu/${RAG_EMBEDDING_MODEL}:${RAG_EMBEDDING_DIMENSIONS}`,
+    rerankerAttempts: [...rerankerAttempts.values()],
     rerankers: actualRerankers,
     minRelevance: null,
   });

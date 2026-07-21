@@ -10,15 +10,21 @@ import {
   RAG_PIPELINE_VERSION,
 } from "../../lib/rag/config";
 import type { RetrievalStrategy } from "../../lib/rag/types";
+import projectProfile from "../profiles/project.json";
 import quickEnProfile from "../profiles/quick-en.json";
 import quickZhProfile from "../profiles/quick-zh.json";
-import { hashPath, hashText } from "./provenance";
+import {
+  hashFiles,
+  hashPath,
+  hashText,
+  resolveSourceRevision,
+} from "./provenance";
 import { parseEvalCases, type RagEvalCase } from "./schema";
 
 const READY_TIMEOUT_MS = 10 * 60 * 1000;
 const READY_POLL_INTERVAL_MS = 1000;
 
-type DatasetOption = "all" | "en" | "zh";
+type DatasetOption = "all" | "en" | "project" | "zh";
 type EvaluationProfile = "full" | "quick";
 type StrategyOption = "hybrid" | "hybrid-rerank" | "lexical" | "vector";
 
@@ -28,6 +34,7 @@ type RetrievalRun = {
 };
 
 type RealEvaluationConfig = {
+  answerModel?: string;
   dataset: DatasetOption;
   dryRun: boolean;
   ingestOnly: boolean;
@@ -101,6 +108,7 @@ export function parseRealEvaluationConfig(
     "--profile=",
     "--reuse-chat=",
     "--strategies=",
+    "--answer-model=",
   ];
   const unknown = options.find(
     (argument) =>
@@ -116,8 +124,13 @@ export function parseRealEvaluationConfig(
     throw new Error("--profile must be quick or full");
   }
   const dataset = optionValue(options, "dataset") ?? "all";
-  if (dataset !== "en" && dataset !== "zh" && dataset !== "all") {
-    throw new Error("--dataset must be en, zh, or all");
+  if (
+    dataset !== "en" &&
+    dataset !== "zh" &&
+    dataset !== "project" &&
+    dataset !== "all"
+  ) {
+    throw new Error("--dataset must be en, zh, project, or all");
   }
   const ingestOnly = options.includes("--ingest-only");
   const reuseChatId = optionValue(options, "reuse-chat");
@@ -126,6 +139,7 @@ export function parseRealEvaluationConfig(
   }
 
   return {
+    answerModel: optionValue(options, "answer-model"),
     dataset,
     dryRun: options.includes("--dry-run"),
     ingestOnly,
@@ -246,10 +260,15 @@ const DATASET_DEFINITIONS: Record<
     corpusPath: "evals/data/corpus/rgb-zh",
     quickCaseIds: quickZhProfile.caseIds,
   },
+  project: {
+    casesPath: "evals/fixtures/project/cases.jsonl",
+    corpusPath: "evals/fixtures/project/corpus",
+    quickCaseIds: projectProfile.caseIds,
+  },
 };
 
 function selectedDatasetKeys(dataset: DatasetOption): DatasetKey[] {
-  return dataset === "all" ? ["en", "zh"] : [dataset];
+  return dataset === "all" ? ["en", "zh", "project"] : [dataset];
 }
 
 function expectedCorpusFileNames(
@@ -261,6 +280,16 @@ function expectedCorpusFileNames(
       ...new Set(
         cases.flatMap((evalCase) =>
           evalCase.relevantDocumentIds.map((id) => `${id}.pdf`)
+        )
+      ),
+    ].toSorted();
+  }
+
+  if (dataset === "project") {
+    return [
+      ...new Set(
+        cases.flatMap((evalCase) =>
+          evalCase.relevantDocumentIds.map((id) => `${id}.txt`)
         )
       ),
     ].toSorted();
@@ -300,7 +329,10 @@ async function loadDatasetPlan(
     corpusFiles,
     corpusPath: definition.corpusPath,
     key,
-    reportName: `${key === "en" ? "financebench" : "rgb-zh"}-${profile}`,
+    reportName:
+      key === "project"
+        ? "project-scenarios"
+        : `${key === "en" ? "financebench" : "rgb-zh"}-${profile}`,
   };
 }
 
@@ -588,6 +620,35 @@ export async function runRealEvaluation(
       throw new Error(
         `Real RAG evaluation completed with ${errorCount} retrieval case errors`
       );
+    }
+    if (config.answerModel !== undefined) {
+      phase = `answer evaluation (${config.answerModel})`;
+      const { runAnswerEvaluation } = await import("./run-answer");
+      for (const plan of datasetPlans) {
+        const documentIds = plan.corpusFiles.map((file) =>
+          resourceIds.get(file.fileName)
+        );
+        if (documentIds.some((id) => id === undefined)) {
+          throw new Error(
+            `Missing resource id for answer evaluation: ${plan.key}`
+          );
+        }
+        await runAnswerEvaluation({
+          answerModel: config.answerModel,
+          cases: plan.cases,
+          chatId: evaluationChatId,
+          documentIds: documentIds as string[],
+          dataset: plan.reportName,
+          caseSetHash: hashText(
+            `${plan.cases.map((evalCase) => JSON.stringify(evalCase)).join("\n")}\n`
+          ),
+          corpusHash: await hashFiles(
+            plan.corpusFiles.map((file) => file.filePath),
+            plan.corpusPath
+          ),
+          sourceRevision: resolveSourceRevision(),
+        });
+      }
     }
     console.log(
       `[eval:rag] Real evaluation completed in ${Date.now() - evaluationStartedAt}ms`

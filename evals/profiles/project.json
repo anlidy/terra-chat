@@ -1,0 +1,14 @@
+{
+  "caseIds": [
+    "project-en-fact",
+    "project-zh-fact",
+    "project-en-summary",
+    "project-zh-summary",
+    "project-en-compare",
+    "project-zh-compare",
+    "project-en-table",
+    "project-zh-slides",
+    "project-en-unanswerable",
+    "project-zh-unanswerable"
+  ]
+}

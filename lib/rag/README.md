@@ -13,7 +13,7 @@
 ```text
 pgvector 稠密向量检索 + PostgreSQL lexical 全文检索
 → Reciprocal Rank Fusion（RRF）
-→ 可选 DashScope gte-rerank（无 Key 时使用确定性启发式回退）
+→ 可选阿里云百炼 qwen3-rerank（未配置或调用失败时使用确定性启发式回退）
 ```
 
 PostgreSQL 分支使用 `to_tsvector('simple', ...)`、`to_tsquery` 和
@@ -34,7 +34,8 @@ lexical/full-text ranking，**不是 BM25**。
 - `evals/`：离线 smoke 与真实语料检索基准，详见 [`evals/README.md`](../../evals/README.md)。
 
 标准结果包含 `chunkId`、`resourceId`、文件名、块号、页码，以及可用的
-`vectorDistance`、`lexicalRank`、`fusionScore`、`rerankScore` 和实际 `reranker`。
+`vectorDistance`、`lexicalRank`、`fusionScore`、`rerankScore`、实际 `reranker`，
+以及远端排序的成功/失败尝试信息。
 
 ## 使用方法
 
@@ -62,8 +63,9 @@ const chunks = await retrieveDocumentChunks({
 
 RRF 使用 `Σ 1 / (k + rank)`，默认 `k = 60`。一路没有结果时，另一路仍会
 按 RRF 的单列表分数返回；两路都为空时返回空数组。开启 rerank 时，候选结果
-由 DashScope `gte-rerank` 排序；没有 `DASHSCOPE_API_KEY` 或远端调用失败时，
-使用本地启发式排序。
+由阿里云百炼 `qwen3-rerank` 排序。需同时配置 `ALIYUN_RERANK_API_KEY` 与
+`ALIYUN_RERANK_BASE_URL`；后者是包含 `/api/v1` 的工作空间基址。未配置或远端调用
+失败时使用本地启发式排序，评测结果会保留远端失败原因和实际回退方式。
 
 ## 数据库索引
 
@@ -81,8 +83,11 @@ pnpm db:migrate
 pnpm test:unit
 pnpm eval:rag:smoke
 pnpm eval:rag:real -- --dry-run
+pnpm eval:rag:real -- --dataset=project --strategies=all
 pnpm eval:rag:full -- --dry-run
 ```
 
 一键真实评测、手工单策略运行和指标口径见
 [`evals/README.md`](../../evals/README.md)。
+当前阶段、已完成基线和后续质量工作记录在
+[`RAG 可靠性与通用化改进计划`](../../docs/plans/2026-07-19-rag-improvement-and-generalization-plan.md)。

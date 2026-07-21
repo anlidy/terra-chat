@@ -33,7 +33,7 @@
   → retrieveDocumentChunks
       → vector + lexical
       → RRF
-      → DashScope 或启发式 rerank
+      → 阿里云百炼 qwen3-rerank 或启发式 rerank
       → top-k chunks
 ```
 
@@ -102,7 +102,7 @@ lib/rag/
     ├── llamacloud-parser.ts
     ├── zhipu-embedder.ts
     ├── postgres-store.ts
-    └── dashscope-reranker.ts
+    └── aliyun-qwen3-reranker.ts
 ```
 
 核心服务只依赖 ports。Next.js 路由、AI SDK tool、环境变量和供应商 SDK 留在 adapter 或应用层。
@@ -155,12 +155,64 @@ type RetrievalRequest = {
 - [x] 为评测报告增加 commit、corpus hash、pipeline version、embedding model、reranker 和阈值信息。
 - [x] 将评测语料的创建、摄取、等待 ready、运行和清理自动化，避免手工上传污染结果。
 - [x] 增加中英文 quick/full profile、按需策略运行和 evaluation chat 复用，降低日常真实评测成本。
-- [ ] 跑出 vector、lexical、hybrid、hybrid + rerank 四组真实基线。
-- [ ] 增加项目实际使用场景的中英文测试集：事实问答、摘要、多文档比较、不可回答、表格/幻灯片。
-- [ ] 增加答案忠实度、引用正确率、输入/输出 token、外部 API 次数和估算成本。
+- [x] 跑出 vector、lexical、hybrid、hybrid + rerank 四组 quick 真实基线。
+- [x] 增加项目实际使用场景的中英文测试集：事实问答、摘要、多文档比较、不可回答、表格/幻灯片。
+- [x] 增加答案忠实度、引用正确率、输入/输出 token、外部 API 次数和估算成本。
+- [x] 在报告中记录远端 reranker 的尝试、失败和回退原因；不能只记录最终使用的 reranker。
 - [x] 修正报告未记录实际 reranker 的设计偏差。
 
 验收：相同 corpus/pipeline version 可重复运行；报告足以定位每个失败 case；smoke 分数不再被当作真实质量证明。
+
+#### 阶段 0 实施记录（2026-07-21）
+
+本轮已完成：
+
+- 根 `AGENTS.md` 已声明当前正在实施本计划的阶段 0，并要求 RAG 代码、配置、评测或测试改动与本计划及相关文档同步更新。
+- 真实评测已自动化 quick/full profile、语料摄取与复用、四策略矩阵以及失败后的清理。
+- 报告现在为每个 case 保存 top-k 的 chunk/resource、文件、页码、内容预览、gold 相关性、vector/lexical/fusion/rerank 分数和实际 reranker；Markdown 失败表直接展示文件位置和分数。
+- 远端排序已从下线的 `gte-rerank` 迁移到工作空间版 `qwen3-rerank`；报告会结构化记录远端成功或失败尝试、错误原因以及最终回退方式，配置使用 `ALIYUN_RERANK_API_KEY` 和 `ALIYUN_RERANK_BASE_URL`。
+- 新增 10-case `project-scenarios` 固定集，覆盖中英事实、摘要、多文档比较、不可回答、表格和幻灯片结构内容；4 份 TXT 语料可直接审阅并走生产切块、Embedding 和检索链路。该集合验证内容形态，不替代阶段 3 对真实 XLSX/PPTX 解析和 metadata 的验证。
+- 新增可选 answer-eval：复用账号内显式指定的模型生成回答并执行 LLM faithfulness judge，以 gold document 做确定性引用核验，同时保存 token、embedding/rerank/answer/judge 调用数和按官方价格计算的成本。报告明确记录 answer 与 judge 是否为同一模型。
+- 使用同一 quick corpus、`chat-rag-v1` 和 `zhipu/embedding-3:1024` 跑完中英文四策略矩阵。FinanceBench case hash 为 `sha256:db1493c63739096eebee933e8083af06a65c57318d1702c0e0a71d70ab6790fe`，RGB 中文 case hash 为 `sha256:fa3ac8396ea3152325bc5176a79fc37a8d973ec8dfcde4d081d9a29d854967ec`。
+
+| 数据集 | 策略 | Recall@5 | MRR | NDCG@5 | False retrieval | P50 / P95 ms | 实际 reranker |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| FinanceBench quick | vector | 0.0000 | 0.0000 | 0.0000 | 1.0000 | 709.15 / 1622.67 | disabled |
+| FinanceBench quick | lexical | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 294.45 / 414.22 | disabled |
+| FinanceBench quick | hybrid | 0.0000 | 0.0000 | 0.0000 | 1.0000 | 751.74 / 1923.62 | disabled |
+| FinanceBench quick | hybrid + rerank | 0.0000 | 0.0000 | 0.0000 | 1.0000 | 1614.24 / 4068.84 | aliyun/qwen3-rerank |
+| RGB 中文 quick | vector | 1.0000 | 1.0000 | 0.9295 | 0.0000 | 793.01 / 1013.07 | disabled |
+| RGB 中文 quick | lexical | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 312.27 / 1036.39 | disabled |
+| RGB 中文 quick | hybrid | 1.0000 | 1.0000 | 0.9295 | 0.0000 | 721.95 / 785.51 | disabled |
+| RGB 中文 quick | hybrid + rerank | 1.0000 | 1.0000 | 1.0000 | 0.0000 | 1594.53 / 2260.64 | aliyun/qwen3-rerank |
+| Project scenarios | vector | 1.0000 | 0.8125 | 0.8516 | 1.0000 | 501.22 / 701.03 | disabled |
+| Project scenarios | lexical | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 374.19 / 903.32 | disabled |
+| Project scenarios | hybrid | 1.0000 | 0.8125 | 0.8516 | 1.0000 | 670.40 / 1701.42 | disabled |
+| Project scenarios | hybrid + rerank | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 828.59 / 1083.66 | aliyun/qwen3-rerank |
+
+这组数据是开发期 quick 基线，不是发布门槛。最初运行旧 DashScope `gte-rerank` 时 Key 返回 401 并回退到 heuristic；2026-07-21 迁移到工作空间版 `qwen3-rerank` 后，复用同一 evaluation chat 重跑两组 hybrid + rerank，10 次远端请求全部成功，报告同时记录远端尝试和实际 reranker。FinanceBench top results 多数已命中正确文件，但 PDF chunk 的 `pageNumber` 为 `null`，且 top-k 未包含完整 gold evidence，因此按当前“文档 + 页码或 evidence 文本”口径仍为 0。RGB 中文 NDCG@5 从 heuristic 的 0.9295 提升到 1.0000，但 P95 从 973.35 ms 增至 2260.64 ms；FinanceBench P95 从 1965.54 ms 增至 4068.84 ms。中文 lexical 同样为 0，确认当前 hybrid 的中文成绩完全来自 vector 分支。
+
+Project scenarios case hash 为 `sha256:d1434a9c40ab37d11e717d1d7fe23a9deb9964abcdc3da2084616f067db8d595`，corpus hash 为 `sha256:fe1a239f1c07f1a3646c0f37e9da3a3062f7cba69b97e21b411977f2ee0be04f`。Qwen3 将可回答 case 的 MRR/NDCG 提升到 1.0，但四种策略对不可回答问题要么全部返回结果，要么 lexical 对所有问题都返回空；这确认 rerank 不能替代拒答阈值，且当前 lexical 分支不构成有效召回来源。
+
+使用当前账号 `deepseek-v4-flash` 对 project scenarios 执行 10-case answer + same-model judge：平均 faithfulness 为 1.0000，确定性引用正确率为 1.0000，输入/输出 token 为 7,411/3,540，端到端外部 API 调用 40 次，按缓存 token 明细和官方 V4 Flash 价格估算为 USD 0.00153702。同模型 judge 存在系统性偏乐观风险，这组分数是可重复基线，不是独立裁判结论。
+
+阶段 0 验收已完成：固定 corpus/pipeline 可重复运行，检索和答案报告均保存逐 case 诊断、模型、token、调用和成本信息，真实基线与 smoke 明确分离。
+
+下一步可以添加：
+
+- 增加答案生成评测及忠实度、引用、token、外部 API 调用和成本字段；
+- 在阶段 3 依据当前失败样本比较 PDF 页码保留、长问题 lexical 策略和拒答阈值，任何方案都必须与本表使用相同 case/corpus hash 对比。
+
+本轮验证证据：
+
+- `pnpm test:unit`：48 个测试通过；
+- `pnpm eval:rag:smoke`：3 个 fixture case 运行成功；
+- `pnpm lint`：通过；
+- `pnpm exec tsc --noEmit --incremental false`：通过；
+- `pnpm eval:rag:real -- --reuse-chat=b96df0c0-5e23-4650-b2d3-59f5ef43b258 --profile=quick --dataset=all --strategies=all`：8 个真实检索 run、40 个 case 执行完成，无 case exception；DashScope 的 401 回退限制如上记录。
+- `pnpm eval:rag:real -- --reuse-chat=b96df0c0-5e23-4650-b2d3-59f5ef43b258 --profile=quick --dataset=all --strategies=hybrid-rerank`：迁移后 2 个真实检索 run、10 个 case 完成，无 case exception；10 次 `qwen3-rerank` 请求全部成功，报告记录 `aliyun/qwen3-rerank: succeeded`，表中 hybrid + rerank 延迟与质量指标已更新为本次结果。
+- `pnpm eval:rag:real -- --dataset=project --profile=quick --strategies=all`：4 份固定项目语料完成摄取，4 个真实检索 run、40 个 case 执行完成，无 case exception；临时数据库数据已清理，质量和延迟见上表。
+- `pnpm eval:rag:real -- --dataset=project --strategies=hybrid-rerank --answer-model=<provider-id>/deepseek-v4-flash`：10 个回答和 10 个 LLM judge case 完成，临时数据已清理；answer 指标、token、40 次端到端调用与成本见上文。
 
 ### 5.2 阶段 1：修正文档生命周期和摄取可靠性
 
@@ -183,7 +235,7 @@ type RetrievalRequest = {
 目标：保持当前功能可用的同时，把 chat 和供应商从核心逻辑移出。
 
 - [ ] 定义 `Parser`、`Chunker`、`Embedder`、`RetrievalStore`、`Reranker` 和 `JobQueue` ports。
-- [ ] 将当前 LlamaCloud、Zhipu、PostgreSQL、DashScope 实现迁移为 adapters。
+- [ ] 将当前 LlamaCloud、Zhipu、PostgreSQL、阿里云百炼 Qwen3-Rerank 实现迁移为 adapters。
 - [ ] 新建 collection/scope 查询边界和权限校验入口。
 - [ ] 保留 `retrieveDocumentChunks({ chatId, ... })` 兼容包装器，内部映射到新服务。
 - [ ] 将 AI SDK tools 和 proactive retrieval 继续路由到同一应用服务。

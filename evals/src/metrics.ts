@@ -11,8 +11,28 @@ export type RetrievalCaseResult = {
   latencyMs: number;
   retrievedCount: number;
   relevantRanks: number[];
+  topResults: Array<{
+    rank: number;
+    chunkId: string;
+    resourceId: string;
+    fileName: string;
+    pageNumber: number | null;
+    contentPreview: string;
+    relevant: boolean;
+    vectorDistance?: number;
+    lexicalRank?: number;
+    fusionScore?: number;
+    rerankScore?: number;
+    reranker?: EvalRetrievedChunk["reranker"];
+    rerankerAttempt?: EvalRetrievedChunk["rerankerAttempt"];
+  }>;
   error?: string;
 };
+
+function contentPreview(content: string): string {
+  const compact = content.replaceAll(/\s+/gu, " ").trim();
+  return compact.length > 160 ? `${compact.slice(0, 160)}…` : compact;
+}
 
 export function normalizeEvidenceText(value: string): string {
   return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
@@ -103,6 +123,31 @@ export function evaluateRetrievalCase({
   const relevantRanks = relevance.flatMap((relevant, index) =>
     relevant ? [index + 1] : []
   );
+  const topResults = topK.map((chunk, index) => ({
+    rank: index + 1,
+    chunkId: chunk.chunkId,
+    resourceId: chunk.resourceId,
+    fileName: chunk.fileName,
+    pageNumber: chunk.pageNumber,
+    contentPreview: contentPreview(chunk.content),
+    relevant: relevance[index] ?? false,
+    ...(chunk.vectorDistance === undefined
+      ? {}
+      : { vectorDistance: chunk.vectorDistance }),
+    ...(chunk.lexicalRank === undefined
+      ? {}
+      : { lexicalRank: chunk.lexicalRank }),
+    ...(chunk.fusionScore === undefined
+      ? {}
+      : { fusionScore: chunk.fusionScore }),
+    ...(chunk.rerankScore === undefined
+      ? {}
+      : { rerankScore: chunk.rerankScore }),
+    ...(chunk.reranker === undefined ? {} : { reranker: chunk.reranker }),
+    ...(chunk.rerankerAttempt === undefined
+      ? {}
+      : { rerankerAttempt: chunk.rerankerAttempt }),
+  }));
 
   return {
     caseId: evalCase.id,
@@ -115,5 +160,6 @@ export function evaluateRetrievalCase({
     latencyMs,
     retrievedCount: retrieved.length,
     relevantRanks,
+    topResults,
   };
 }

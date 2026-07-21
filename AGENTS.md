@@ -8,6 +8,17 @@ FurryChatbot is a Next.js 16 and React 19 chatbot built on AI SDK 6. Its main fl
 
 Treat executable code and checked-in configuration as the source of truth. When documentation disagrees with behavior, verify the implementation, correct the documentation in the same change, and call out any uncertainty.
 
+## Current Work
+
+The repository is currently implementing **Phase 0: establish a trustworthy baseline** from the [RAG reliability and generalization improvement plan](docs/plans/2026-07-19-rag-improvement-and-generalization-plan.md). Treat that plan as the canonical status record for ongoing RAG work.
+
+After every RAG code, configuration, evaluation, or test change:
+
+- update the plan in the same change with completed work and fresh verification evidence;
+- record newly discovered follow-up work or decisions in the appropriate phase instead of leaving it only in chat or commit context;
+- update the narrowest related durable documentation and `docs/README.md` when its catalog summary changes;
+- do not mark a phase complete until its implementation, reports, and documented acceptance criteria have been verified.
+
 ## Working Agreement
 
 Before changing files:

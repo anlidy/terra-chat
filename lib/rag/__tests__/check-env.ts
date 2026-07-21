@@ -28,15 +28,23 @@ function checkEnv() {
       description: "Text embedding (vector search)",
     },
     {
-      name: "DashScope Rerank",
-      key: "DASHSCOPE_API_KEY",
+      name: "Alibaba Cloud Qwen3 Rerank API key",
+      key: "ALIYUN_RERANK_API_KEY",
       required: false,
-      description: "Reranking via gte-rerank",
+      description: "Authentication for qwen3-rerank",
+    },
+    {
+      name: "Alibaba Cloud Qwen3 Rerank base URL",
+      key: "ALIYUN_RERANK_BASE_URL",
+      required: false,
+      description: "Workspace API base URL ending in /api/v1",
     },
   ];
 
   let allRequired = true;
-  let hasOptional = false;
+  const hasOptional = Boolean(
+    process.env.ALIYUN_RERANK_API_KEY && process.env.ALIYUN_RERANK_BASE_URL
+  );
 
   for (const check of checks) {
     const value = process.env[check.key];
@@ -58,10 +66,6 @@ function checkEnv() {
     } else {
       console.log("   💡 Optional: Add for better results");
     }
-
-    if (!check.required && isSet) {
-      hasOptional = true;
-    }
   }
 
   console.log(`\n${"=".repeat(60)}`);
@@ -78,7 +82,7 @@ function checkEnv() {
     console.log("✅ Optional features enabled (Rerank)");
   } else {
     console.log("⚠️  Optional features not enabled");
-    console.log("   Add DASHSCOPE_API_KEY for better reranking");
+    console.log("   Add both ALIYUN_RERANK_API_KEY and ALIYUN_RERANK_BASE_URL");
   }
 
   console.log(`\n${"=".repeat(60)}`);
@@ -95,10 +99,10 @@ function checkEnv() {
   }
 
   if (!hasOptional) {
-    console.log("\n💡 To enable DashScope Rerank:");
-    console.log("   1. Visit https://dashscope.console.aliyun.com/");
-    console.log("   2. Sign up and get API key");
-    console.log("   3. Add to .env.local: DASHSCOPE_API_KEY=your_key");
+    console.log("\n💡 To enable Alibaba Cloud Qwen3 Rerank:");
+    console.log("   1. Create a Model Studio workspace deployment");
+    console.log("   2. Add ALIYUN_RERANK_API_KEY to .env.local");
+    console.log("   3. Add the workspace ALIYUN_RERANK_BASE_URL");
     console.log("   4. Restart application");
   }
 

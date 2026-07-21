@@ -1,0 +1,7 @@
+Atlas Product Brief
+
+Atlas is a document collaboration product for regulated teams. The first public pilot launches on 15 October 2026. The pilot targets legal and pharmaceutical customers in Singapore and London.
+
+The release has three priorities: private document storage, evidence-linked answers, and a complete audit trail. Success means at least 80% of pilot questions receive a verified citation and no document is readable outside its owning workspace.
+
+The team will not ship automated document deletion during the pilot. That capability remains scheduled for the general-availability release.

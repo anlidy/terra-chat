@@ -16,6 +16,7 @@ const results: RetrievalCaseResult[] = [
     latencyMs: 10,
     retrievedCount: 1,
     relevantRanks: [1],
+    topResults: [],
   },
   {
     caseId: "miss",
@@ -28,6 +29,18 @@ const results: RetrievalCaseResult[] = [
     latencyMs: 20,
     retrievedCount: 1,
     relevantRanks: [],
+    topResults: [
+      {
+        rank: 1,
+        chunkId: "wrong-chunk",
+        resourceId: "wrong-resource",
+        fileName: "wrong.pdf",
+        pageNumber: 7,
+        contentPreview: "wrong evidence",
+        relevant: false,
+        vectorDistance: 0.42,
+      },
+    ],
   },
   {
     caseId: "false-retrieval",
@@ -40,6 +53,7 @@ const results: RetrievalCaseResult[] = [
     latencyMs: 30,
     retrievedCount: 1,
     relevantRanks: [],
+    topResults: [],
   },
 ];
 
@@ -54,6 +68,7 @@ test("buildRetrievalReport keeps answerable and unanswerable denominators separa
     corpusHash: "sha256:corpus",
     pipelineVersion: "smoke-v1",
     embeddingModel: null,
+    rerankerAttempts: [],
     rerankers: ["fixture"],
     minRelevance: null,
   });
@@ -80,6 +95,13 @@ test("renderMarkdownReport includes metrics and failed cases", () => {
     corpusHash: "sha256:corpus",
     pipelineVersion: "smoke-v1",
     embeddingModel: null,
+    rerankerAttempts: [
+      {
+        reranker: "aliyun/qwen3-rerank",
+        status: "failed",
+        error: "Qwen3 rerank failed: 401",
+      },
+    ],
     rerankers: ["fixture"],
     minRelevance: null,
   });
@@ -90,10 +112,16 @@ test("renderMarkdownReport includes metrics and failed cases", () => {
   assert.match(markdown, /Source revision: abc123/);
   assert.match(markdown, /Corpus hash: sha256:corpus/);
   assert.match(markdown, /Rerankers: fixture/);
+  assert.match(
+    markdown,
+    /Reranker attempts: aliyun\/qwen3-rerank: failed \(Qwen3 rerank failed: 401\)/u
+  );
   assert.match(markdown, /Minimum relevance: disabled/);
   assert.match(markdown, /Recall@5/);
   assert.match(markdown, /NDCG@5/);
   assert.match(markdown, /P95/);
   assert.match(markdown, /miss query/);
+  assert.match(markdown, /wrong\.pdf#page=7/);
+  assert.match(markdown, /vectorDistance=0\.4200/);
   assert.match(markdown, /false-retrieval/);
 });

@@ -1,3 +1,4 @@
+import type { RerankerAttempt } from "../../lib/rag/types";
 import { percentile, type RetrievalCaseResult } from "./metrics";
 
 export type RetrievalReport = {
@@ -11,6 +12,7 @@ export type RetrievalReport = {
     corpusHash: string;
     pipelineVersion: string;
     embeddingModel: string | null;
+    rerankerAttempts: RerankerAttempt[];
     rerankers: string[];
     minRelevance: number | null;
   };
@@ -39,6 +41,7 @@ type ReportOptions = {
   corpusHash: string;
   pipelineVersion: string;
   embeddingModel: string | null;
+  rerankerAttempts: RerankerAttempt[];
   rerankers: string[];
   minRelevance: number | null;
 };
@@ -82,6 +85,7 @@ export function buildRetrievalReport(
       corpusHash: options.corpusHash,
       pipelineVersion: options.pipelineVersion,
       embeddingModel: options.embeddingModel,
+      rerankerAttempts: options.rerankerAttempts,
       rerankers: options.rerankers,
       minRelevance: options.minRelevance,
     },
@@ -110,6 +114,50 @@ function escapeTableCell(value: string): string {
   return value.replaceAll("|", "\\|").replaceAll("\n", " ");
 }
 
+function formatRerankerAttempts(attempts: RerankerAttempt[]): string {
+  if (attempts.length === 0) {
+    return "not invoked";
+  }
+
+  return attempts
+    .map((attempt) =>
+      attempt.error === undefined
+        ? `${attempt.reranker}: ${attempt.status}`
+        : `${attempt.reranker}: ${attempt.status} (${attempt.error})`
+    )
+    .join("; ");
+}
+
+function formatTopResults(result: RetrievalCaseResult): string {
+  if (result.topResults.length === 0) {
+    return "—";
+  }
+
+  return result.topResults
+    .map((item) => {
+      const scores = [
+        item.vectorDistance === undefined
+          ? undefined
+          : `vectorDistance=${item.vectorDistance.toFixed(4)}`,
+        item.lexicalRank === undefined
+          ? undefined
+          : `lexicalRank=${item.lexicalRank.toFixed(4)}`,
+        item.fusionScore === undefined
+          ? undefined
+          : `fusionScore=${item.fusionScore.toFixed(4)}`,
+        item.rerankScore === undefined
+          ? undefined
+          : `rerankScore=${item.rerankScore.toFixed(4)}`,
+        item.reranker === undefined ? undefined : `reranker=${item.reranker}`,
+      ].filter((value) => value !== undefined);
+      const location = `${item.rank}:${item.fileName}#page=${item.pageNumber ?? "unknown"}`;
+      return scores.length === 0
+        ? location
+        : `${location} (${scores.join(", ")})`;
+    })
+    .join("<br>");
+}
+
 export function renderMarkdownReport(report: RetrievalReport): string {
   const { metadata, summary } = report;
   const failedCases = report.cases.filter(
@@ -120,7 +168,7 @@ export function renderMarkdownReport(report: RetrievalReport): string {
   );
   const failureRows =
     failedCases.length === 0
-      ? "| — | — | — |"
+      ? "| — | — | — | — |"
       : failedCases
           .map((result) => {
             const reason =
@@ -128,7 +176,7 @@ export function renderMarkdownReport(report: RetrievalReport): string {
               (result.falseRetrieval
                 ? "false-retrieval"
                 : `no relevant result in top ${metadata.k}`);
-            return `| ${escapeTableCell(result.caseId)} | ${escapeTableCell(result.query)} | ${escapeTableCell(reason)} |`;
+            return `| ${escapeTableCell(result.caseId)} | ${escapeTableCell(result.query)} | ${escapeTableCell(reason)} | ${escapeTableCell(formatTopResults(result))} |`;
           })
           .join("\n");
 
@@ -143,6 +191,7 @@ export function renderMarkdownReport(report: RetrievalReport): string {
 - Pipeline version: ${metadata.pipelineVersion}
 - Embedding model: ${metadata.embeddingModel ?? "not used"}
 - Rerankers: ${metadata.rerankers.join(", ")}
+- Reranker attempts: ${formatRerankerAttempts(metadata.rerankerAttempts)}
 - Minimum relevance: ${metadata.minRelevance ?? "disabled"}
 
 | Metric | Value |
@@ -160,8 +209,8 @@ export function renderMarkdownReport(report: RetrievalReport): string {
 
 ## Failed Cases
 
-| Case | Query | Reason |
-| --- | --- | --- |
+| Case | Query | Reason | Top results |
+| --- | --- | --- | --- |
 ${failureRows}
 `;
 }

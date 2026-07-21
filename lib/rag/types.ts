@@ -1,5 +1,12 @@
 export type RetrievalStrategy = "vector" | "lexical" | "hybrid";
-export type RerankerName = "dashscope/gte-rerank" | "heuristic" | "identity";
+export type RemoteRerankerName = "aliyun/qwen3-rerank";
+export type RerankerName = RemoteRerankerName | "heuristic" | "identity";
+
+export type RerankerAttempt = {
+  reranker: RemoteRerankerName;
+  status: "failed" | "succeeded";
+  error?: string;
+};
 
 export type RetrievedChunk = {
   chunkId: string;
@@ -13,6 +20,7 @@ export type RetrievedChunk = {
   fusionScore?: number;
   rerankScore?: number;
   reranker?: RerankerName;
+  rerankerAttempt?: RerankerAttempt;
 };
 
 export type VectorSearchResult = RetrievedChunk & {

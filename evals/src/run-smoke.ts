@@ -70,6 +70,7 @@ async function main(): Promise<void> {
     ),
     pipelineVersion: RAG_PIPELINE_VERSION,
     embeddingModel: null,
+    rerankerAttempts: [],
     rerankers: ["fixture"],
     minRelevance: null,
   });

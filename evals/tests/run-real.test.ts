@@ -12,6 +12,7 @@ const cases = [{ id: "case-a" }, { id: "case-b" }, { id: "case-c" }];
 
 test("real evaluation defaults to a quick bilingual hybrid run", () => {
   assert.deepEqual(parseRealEvaluationConfig([]), {
+    answerModel: undefined,
     dataset: "all",
     dryRun: false,
     ingestOnly: false,
@@ -41,6 +42,7 @@ test("real evaluation parses lifecycle flags and rejects unknown options", () =>
       "--refresh",
     ]),
     {
+      answerModel: undefined,
       dataset: "zh",
       dryRun: true,
       ingestOnly: false,
@@ -57,6 +59,7 @@ test("real evaluation parses lifecycle flags and rejects unknown options", () =>
   assert.deepEqual(
     parseRealEvaluationConfig(["--ingest-only", "--dataset=en"]),
     {
+      answerModel: undefined,
       dataset: "en",
       dryRun: false,
       ingestOnly: true,
@@ -72,6 +75,10 @@ test("real evaluation parses lifecycle flags and rejects unknown options", () =>
       "--reuse-chat=123e4567-e89b-12d3-a456-426614174000",
     ]).reuseChatId,
     "123e4567-e89b-12d3-a456-426614174000"
+  );
+  assert.equal(
+    parseRealEvaluationConfig(["--dataset=project"]).dataset,
+    "project"
   );
   assert.throws(
     () =>
@@ -91,7 +98,7 @@ test("real evaluation parses lifecycle flags and rejects unknown options", () =>
   );
   assert.throws(
     () => parseRealEvaluationConfig(["--dataset=fr"]),
-    /dataset must be en, zh, or all/u
+    /dataset must be en, zh, project, or all/u
   );
   assert.throws(
     () => parseRealEvaluationConfig(["--strategies=keyword"]),

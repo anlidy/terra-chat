@@ -17,7 +17,7 @@
 - **多模型支持**: 通过 AI SDK 接入 OpenAI、Anthropic 等多家模型提供商
 - **流式对话**: 实时流式聊天，支持 markdown 渲染和代码高亮
 - **Artifacts**: 在对话中生成并预览代码、文档、表格、图片等内容
-- **RAG 检索增强生成**: 支持文档上传解析（PDF/DOCX/XLSX/PPTX/TXT），pgvector 与 PostgreSQL lexical 检索经 RRF 融合，并可用 DashScope 重排序
+- **RAG 检索增强生成**: 支持文档上传解析（PDF/DOCX/XLSX/PPTX/TXT），pgvector 与 PostgreSQL lexical 检索经 RRF 融合，并可用阿里云百炼 Qwen3-Rerank 重排序
 - **网络搜索**: 集成 Tavily 搜索引擎，实时获取网络信息
 - **图片生成**: 支持 AI 图片生成（SiliconFlow FLUX）
 - **多模态输入**: 支持文本和文件混合输入
@@ -39,7 +39,8 @@
 - `LLAMA_CLOUD_API_KEY` — 文档解析（LlamaCloud）
 - `IMAGE_GEN_API_KEY` — AI 图片生成（SiliconFlow）
 - `ZHIPU_API_KEY` — 文本嵌入模型（智谱 Embedding-3）
-- `DASHSCOPE_API_KEY` — RAG 重排序（阿里云 DashScope）
+- `ALIYUN_RERANK_API_KEY` — 阿里云百炼工作空间 API Key（Qwen3-Rerank）
+- `ALIYUN_RERANK_BASE_URL` — 百炼工作空间 API 基址，包含 `/api/v1`
 - `TAVILY_API_KEY` — 网络搜索（Tavily）
 
 ```bash
@@ -66,7 +67,7 @@ pnpm format       # 代码格式化
 pnpm test         # 运行 E2E 测试
 pnpm test:unit    # 运行单元测试与 RAG 评测契约测试
 pnpm eval:rag:smoke # 运行离线 RAG smoke 评测
-pnpm eval:rag:real  # 运行 quick 中英文真实评测
+pnpm eval:rag:real  # 运行 quick 中英文及项目场景真实评测
 pnpm eval:rag:full  # 运行完整中英文四策略评测
 pnpm db:generate  # 生成数据库迁移文件
 pnpm db:migrate   # 执行数据库迁移
@@ -92,7 +93,7 @@ tests/e2e/        — Playwright E2E 测试
 ```text
 pgvector 稠密检索 + PostgreSQL lexical 全文检索
 → Reciprocal Rank Fusion
-→ 可选 DashScope rerank
+→ 可选阿里云百炼 qwen3-rerank
 ```
 
 先运行无需数据库或 API Key 的离线校验：
@@ -101,7 +102,7 @@ pgvector 稠密检索 + PostgreSQL lexical 全文检索
 pnpm eval:rag:smoke
 ```
 
-配置外部服务后，默认运行中英文 quick profile；完整基线使用 `eval:rag:full`：
+配置外部服务后，默认运行中英文与项目场景 quick profile；完整基线使用 `eval:rag:full`：
 
 ```bash
 pnpm eval:rag:real

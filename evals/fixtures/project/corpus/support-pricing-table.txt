@@ -1,0 +1,9 @@
+Support plans / 支持方案
+
+| Plan | Monthly price | First response | Included regions |
+| --- | ---: | --- | --- |
+| Core | USD 49 | 8 business hours | Singapore |
+| Plus | USD 129 | 2 business hours | Singapore, United Kingdom |
+| Enterprise | USD 399 | 30 minutes, 24x7 | Global |
+
+年度付款可享受 10% 折扣。只有 Enterprise 方案包含专属事件复盘和电话升级通道。

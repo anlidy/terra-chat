@@ -1,12 +1,14 @@
-import type { RerankerName } from "./types";
+import type { RerankerAttempt, RerankerName } from "./types";
 
 /**
  * Reranker — improves retrieval quality via second-stage scoring.
  *
  * Priority chain:
- *   1. DashScope gte-rerank (DASHSCOPE_API_KEY)
+ *   1. Alibaba Cloud Model Studio qwen3-rerank
  *   2. Heuristic              (no API key required)
  */
+
+const QWEN3_RERANK_PATH = "/services/rerank/text-rerank/text-rerank";
 
 export interface RerankDocument {
   content: string;
@@ -23,7 +25,15 @@ export async function rerankDocuments<T extends RerankDocument>({
   query: string;
   documents: T[];
   topK?: number;
-}): Promise<Array<T & { reranker: RerankerName; rerankScore: number }>> {
+}): Promise<
+  Array<
+    T & {
+      reranker: RerankerName;
+      rerankerAttempt?: RerankerAttempt;
+      rerankScore: number;
+    }
+  >
+> {
   if (documents.length <= topK) {
     return documents.slice(0, topK).map((document) => ({
       ...document,
@@ -32,26 +42,34 @@ export async function rerankDocuments<T extends RerankDocument>({
     }));
   }
 
-  if (process.env.DASHSCOPE_API_KEY) {
+  if (process.env.ALIYUN_RERANK_API_KEY && process.env.ALIYUN_RERANK_BASE_URL) {
     try {
-      return await rerankWithDashScope({ query, documents, topK });
+      return await rerankWithQwen3({ query, documents, topK });
     } catch (error) {
-      console.error(
-        "[DashScope Rerank Error] Falling back to heuristic:",
-        error
-      );
+      const failure = error instanceof Error ? error.message : String(error);
+      console.error("[Qwen3 Rerank Error] Falling back to heuristic:", error);
+      return rerankWithHeuristic({
+        query,
+        documents,
+        topK,
+        rerankerAttempt: {
+          reranker: "aliyun/qwen3-rerank",
+          status: "failed",
+          error: failure,
+        },
+      });
     }
   }
 
   console.log(
-    "[Rerank] Using heuristic (set DASHSCOPE_API_KEY for better results)"
+    "[Rerank] Using heuristic (set ALIYUN_RERANK_API_KEY and ALIYUN_RERANK_BASE_URL for Qwen3 reranking)"
   );
   return rerankWithHeuristic({ query, documents, topK });
 }
 
-// ─── DashScope gte-rerank ──────────────────────────────────
+// ─── Alibaba Cloud Model Studio qwen3-rerank ───────────────
 
-async function rerankWithDashScope<T extends RerankDocument>({
+async function rerankWithQwen3<T extends RerankDocument>({
   query,
   documents,
   topK = 5,
@@ -59,55 +77,69 @@ async function rerankWithDashScope<T extends RerankDocument>({
   query: string;
   documents: T[];
   topK?: number;
-}): Promise<Array<T & { reranker: RerankerName; rerankScore: number }>> {
-  const response = await fetch(
-    "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.DASHSCOPE_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gte-rerank",
-        input: {
-          query,
-          documents: documents.map((d) => d.content),
-        },
-        parameters: {
-          top_n: topK,
-          return_documents: false,
-        },
-      }),
+}): Promise<
+  Array<
+    T & {
+      reranker: RerankerName;
+      rerankerAttempt: RerankerAttempt;
+      rerankScore: number;
     }
-  );
+  >
+> {
+  const baseUrl = process.env.ALIYUN_RERANK_BASE_URL?.replace(/\/$/u, "");
+  const response = await fetch(`${baseUrl}${QWEN3_RERANK_PATH}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.ALIYUN_RERANK_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "qwen3-rerank",
+      input: {
+        query,
+        documents: documents.map((document) => document.content),
+      },
+      parameters: {
+        top_n: topK,
+        return_documents: false,
+      },
+    }),
+  });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`DashScope rerank failed: ${response.status} - ${error}`);
+    const error = (await response.text()).slice(0, 500);
+    throw new Error(`Qwen3 rerank failed: ${response.status} - ${error}`);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as {
+    output?: {
+      results?: Array<{ index: number; relevance_score: number }>;
+    };
+  };
 
-  const results = data.output.results as Array<{
-    index: number;
-    relevance_score: number;
-  }>;
+  if (!Array.isArray(data.output?.results)) {
+    throw new Error("Qwen3 rerank returned no results array");
+  }
+  const results = data.output.results;
 
   console.log(
-    `[DashScope Rerank] ${documents.length} docs → top ${topK}, score range: ${results[0]?.relevance_score.toFixed(3)} - ${results.at(-1)?.relevance_score.toFixed(3)}`
+    `[Qwen3 Rerank] ${documents.length} docs → top ${topK}, score range: ${results[0]?.relevance_score.toFixed(3)} - ${results.at(-1)?.relevance_score.toFixed(3)}`
   );
 
   return results.map((result) => {
     const document = documents[result.index];
     if (document === undefined) {
       throw new Error(
-        `DashScope returned invalid document index: ${result.index}`
+        `Qwen3 rerank returned invalid document index: ${result.index}`
       );
     }
     return {
       ...document,
-      reranker: "dashscope/gte-rerank",
+      reranker: "aliyun/qwen3-rerank",
+      rerankerAttempt: {
+        reranker: "aliyun/qwen3-rerank",
+        status: "succeeded",
+      },
       rerankScore: result.relevance_score,
     };
   });
@@ -119,14 +151,23 @@ function rerankWithHeuristic<T extends RerankDocument>({
   query,
   documents,
   topK = 5,
+  rerankerAttempt,
 }: {
   query: string;
   documents: T[];
   topK?: number;
-}): Array<T & { reranker: RerankerName; rerankScore: number }> {
+  rerankerAttempt?: RerankerAttempt;
+}): Array<
+  T & {
+    reranker: RerankerName;
+    rerankerAttempt?: RerankerAttempt;
+    rerankScore: number;
+  }
+> {
   const results = documents.map((doc) => ({
     ...doc,
     reranker: "heuristic" as const,
+    ...(rerankerAttempt === undefined ? {} : { rerankerAttempt }),
     rerankScore: calculateRelevanceScore(query, doc.content),
   }));
 

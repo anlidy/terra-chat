@@ -29,8 +29,17 @@ export const evalRetrievedChunkSchema = z.object({
   chunkIndex: z.number().int().nonnegative(),
   fileName: z.string().min(1),
   pageNumber: z.number().int().nonnegative().nullable(),
-  reranker: z
-    .enum(["dashscope/gte-rerank", "heuristic", "identity"])
+  vectorDistance: z.number().optional(),
+  lexicalRank: z.number().optional(),
+  fusionScore: z.number().optional(),
+  rerankScore: z.number().optional(),
+  reranker: z.enum(["aliyun/qwen3-rerank", "heuristic", "identity"]).optional(),
+  rerankerAttempt: z
+    .object({
+      reranker: z.literal("aliyun/qwen3-rerank"),
+      status: z.enum(["failed", "succeeded"]),
+      error: z.string().optional(),
+    })
     .optional(),
 });
 

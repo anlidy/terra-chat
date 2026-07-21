@@ -1,7 +1,7 @@
 /**
  * Test script for RAG Rerank integration
  *
- * Priority: DashScope gte-rerank > heuristic
+ * Priority: Alibaba Cloud qwen3-rerank > heuristic
  *
  * Usage:
  *   npx tsx lib/rag/__tests__/test-rerank.ts
@@ -13,9 +13,10 @@ async function testRerank() {
   console.log("Testing RAG Rerank Integration\n");
   console.log("=".repeat(50));
 
-  const provider = process.env.DASHSCOPE_API_KEY
-    ? "DashScope gte-rerank"
-    : "Heuristic (fallback)";
+  const provider =
+    process.env.ALIYUN_RERANK_API_KEY && process.env.ALIYUN_RERANK_BASE_URL
+      ? "Alibaba Cloud qwen3-rerank"
+      : "Heuristic (fallback)";
 
   console.log(`Provider: ${provider}\n`);
 
@@ -99,8 +100,12 @@ async function testRerank() {
     console.log(
       "Ranking may not be optimal (heuristic fallback is approximate)"
     );
-    if (!process.env.DASHSCOPE_API_KEY) {
-      console.log("  Set DASHSCOPE_API_KEY for better results");
+    if (
+      !(process.env.ALIYUN_RERANK_API_KEY && process.env.ALIYUN_RERANK_BASE_URL)
+    ) {
+      console.log(
+        "  Set ALIYUN_RERANK_API_KEY and ALIYUN_RERANK_BASE_URL for better results"
+      );
     }
   }
 
