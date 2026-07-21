@@ -15,7 +15,83 @@ pnpm eval:rag:smoke
 smoke 报告固定写入 `evals/results/smoke-latest.json` 和
 `evals/results/smoke-latest.md`。生成的报告被 Git 忽略。
 
-显式下载公开数据和语料：
+## 分层真实评测
+
+`.env.local` 配置 `POSTGRES_URL`、`LLAMA_CLOUD_API_KEY` 和
+`ZHIPU_API_KEY` 后运行：
+
+```bash
+pnpm eval:rag:real
+```
+
+默认命令运行适合日常开发的 `quick` profile：英文 FinanceBench 固定选择 5 个 case 和
+4 份 PDF，中文 RGB 固定选择 5 个 case 及其 25 个正负例文本，只运行 hybrid、不启用
+rerank。profile 清单位于 `evals/profiles/`，选择是确定性的，不会随机漂移。报告保留在
+`evals/results/`；临时 chat、resource、chunk 和用户会在成功或失败后自动清理。
+
+发布前或定时任务运行完整中英文语料和四策略矩阵：
+
+```bash
+pnpm eval:rag:full
+```
+
+full 英文集包含 35 个 case 和 22 份 PDF；full 中文集包含 15 个 case 和 75 个正负例
+文本。TXT 在本地解码，PDF/DOCX/XLSX/PPTX 才调用 LlamaCloud；两类语料仍共用生产
+切块、Embedding、写库和检索流程。
+
+真实解析、Embedding 和可选远端 rerank 会产生外部 API 调用。正式执行前可做不连接
+数据库、不调用外部 API 的预检：
+
+```bash
+pnpm eval:rag:real -- --dry-run
+```
+
+可选参数：
+
+- `--profile=quick|full`：默认 `quick`；full 使用完整数据集；
+- `--dataset=en|zh|all`：默认 `all`；分别选择 FinanceBench、RGB 中文或两者；
+- `--strategies=vector,lexical,hybrid,hybrid-rerank|all`：默认 `hybrid`；
+- `--refresh`：重新拉取上游 cases 和语料，已存在的非空 PDF 不重复下载；
+- `--keep-data`：运行结束后保留新建的临时用户和 chat；
+- `--ingest-only`：只摄取并保留数据，日志会输出可复用的 chat ID；
+- `--reuse-chat=<uuid>`：跳过解析和 Embedding，复用已 ready 的评测 chat。
+
+摄取与策略评测可以分开，避免每次策略调整都重新解析文档：
+
+```bash
+# 首次摄取；也可追加 --profile=full --dataset=all
+pnpm eval:rag:ingest
+
+# 使用上一条日志输出的 chat ID，只运行需要比较的策略
+pnpm eval:rag:real -- \
+  --reuse-chat=<uuid> \
+  --profile=quick \
+  --dataset=all \
+  --strategies=vector,lexical,hybrid
+```
+
+复用 chat 时，runner 会确认所选文档均为 ready，并将检索限制到当前 profile 的
+resource ID；因此 full chat 可以安全运行 quick profile，不会把 full 的额外文档混入
+quick 结果。resource 还记录文件内容、pipeline version 和 Embedding 配置指纹；任何一项
+变化都会拒绝复用，避免旧向量被标记为当前 corpus。case set 和 corpus hash 也只基于
+当前选择计算。
+
+摄取日志会按文档显示解析、Embedding 批次、写库和总耗时。Embedding-3 按官方上限
+每批最多提交 64 个 chunk，并对网络错误、HTTP 408/429 和 5xx 做最多 3 次有限重试；
+认证或请求参数错误会立即失败。失败日志包含当前评测阶段、文件名、resource ID、批次和
+底层网络错误码，便于区分连接故障、API 拒绝与写库故障。
+
+`eval:rag:real` 会启用 Node 的环境代理支持；设置了 `HTTP_PROXY`、`HTTPS_PROXY` 或
+`NO_PROXY` 时，外部解析、Embedding、rerank 和数据下载请求会遵循这些变量。
+
+未配置 `DASHSCOPE_API_KEY` 时，rerank 策略仍会运行，但报告会如实记录实际使用的
+`heuristic` reranker。命令中断或进程被强制终止时，`finally` 清理无法得到保证；临时
+chat 标题以 `RAG evaluation` 开头，便于定位。复用 chat 和 `--ingest-only` 创建的数据
+不会自动删除，需要在不再使用时手工删除对应 chat/用户。
+
+## 手工运行单组策略
+
+仅需补齐本地公开数据时可以运行：
 
 ```bash
 pnpm eval:rag:download
@@ -28,7 +104,7 @@ pnpm eval:rag:download
 - 15 个 RGB 中文样本，每题最多保留 2 个正例和 3 个负例段落；
 - 所选 FinanceBench PDF 与 RGB 文本语料。
 
-将下载的评测语料上传到同一个聊天并等待处理完成，然后运行真实检索：
+也可以将下载的评测语料手工上传到同一个聊天并等待处理完成，然后运行单组真实检索：
 
 ```bash
 EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- \
@@ -107,7 +183,11 @@ EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/fin
 EVAL_CHAT_ID=<uuid> pnpm eval:rag:retrieval -- --cases=evals/data/normalized/financebench.jsonl --corpus=evals/data/corpus/financebench --strategy=hybrid --rerank=true
 ```
 
-runner 使用 strategy、rerank 模式和时间戳命名 JSON/Markdown，因此四次运行会分别
-保留。比较时以 JSON 为机器可读基线；报告中的 `rerankers` 记录实际执行结果，包括
-远端失败后的回退，而不是根据 `DASHSCOPE_API_KEY` 推测。不要把 smoke fixture 分数
-当成真实语料质量。
+runner 使用 dataset/profile、strategy、rerank 模式和时间戳命名 JSON/Markdown，
+因此中英文与各策略报告会分别保留。比较时以 JSON 为机器可读基线；报告中的
+`rerankers` 记录实际执行结果，包括远端失败后的回退，而不是根据
+`DASHSCOPE_API_KEY` 推测。不要把 quick 或 smoke 分数与 full 基线混为一组。
+
+检索日志中的 `[Lexical Search Error]` 表示 lexical 分支已回退为空结果；hybrid 仍可由
+vector 分支完成 case，因此报告的 `Errors` 可能仍为 0。出现该日志时不能把报告视为
+有效的 hybrid 基线，应先修复查询或数据库问题，再用相同 chat、profile 和策略重跑。

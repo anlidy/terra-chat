@@ -639,7 +639,7 @@ Expected: FAIL because `parseRetrievalRunConfig` is missing.
 Add:
 
 ```json
-"eval:rag:retrieval": "tsx evals/src/run-retrieval.ts"
+"eval:rag:retrieval": "tsx --conditions=react-server evals/src/run-retrieval.ts"
 ```
 
 - [ ] **Step 4: Run the configuration test**

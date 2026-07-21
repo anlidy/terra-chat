@@ -97,7 +97,7 @@ async function hasDownloadedFile(filePath: string): Promise<boolean> {
   }
 }
 
-async function main(): Promise<void> {
+export async function downloadDatasets(): Promise<void> {
   const rawDirectory = path.resolve("evals/data/raw");
   const normalizedDirectory = path.resolve("evals/data/normalized");
   const financeCorpusDirectory = path.resolve("evals/data/corpus/financebench");
@@ -242,7 +242,9 @@ async function main(): Promise<void> {
   console.log(`Generated unanswerable cases: ${unanswerableCases.length}`);
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  downloadDatasets().catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

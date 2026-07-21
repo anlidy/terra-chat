@@ -1,0 +1,10 @@
+{
+  "dataset": "en",
+  "caseIds": [
+    "financebench_id_00005",
+    "financebench_id_00283",
+    "financebench_id_00438",
+    "financebench_id_00288",
+    "financebench_id_00382"
+  ]
+}

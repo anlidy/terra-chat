@@ -5,7 +5,7 @@ import {
   updateDocumentResourceStatus,
 } from "@/lib/db/queries";
 import { chunkMarkdown } from "./chunk";
-import { embedText } from "./embed";
+import { embedTexts } from "./embed";
 import { parseDocument } from "./parse";
 
 /**
@@ -45,40 +45,95 @@ export async function ingest({
   // 2. Process document in background
   after(async () => {
     try {
-      console.log(`[ingest] Processing document ${resource.id}`);
-
-      const markdown = await parseDocument(buffer, fileName);
-      const chunks = chunkMarkdown(markdown);
-
-      console.log(
-        `[ingest] Embedding ${chunks.length} chunks for ${resource.id}`
-      );
-      const embeddings = await Promise.all(
-        chunks.map((c) => embedText(c.content))
-      );
-
-      await insertDocumentChunks({
-        chunks: chunks.map((chunk, i) => ({
-          resourceId: resource.id,
-          chatId,
-          content: chunk.content,
-          embedding: embeddings[i],
-          chunkIndex: i,
-          pageNumber: chunk.pageNumber ?? null,
-        })),
+      await processDocumentResource({
+        resourceId: resource.id,
+        chatId,
+        fileName,
+        fileType,
+        buffer,
       });
-
-      await updateDocumentResourceStatus({ id: resource.id, status: "ready" });
-      console.log(`[ingest] Document ${resource.id} ready`);
     } catch (error) {
       console.error(
         `[ingest] Error processing document ${resource.id}:`,
         error
       );
-      await updateDocumentResourceStatus({ id: resource.id, status: "error" });
     }
   });
 
   // 3. Return resourceId immediately
   return resource.id;
+}
+
+export async function processDocumentResource({
+  resourceId,
+  chatId,
+  fileName,
+  fileType,
+  buffer,
+}: {
+  resourceId: string;
+  chatId: string;
+  fileName: string;
+  fileType: string;
+  buffer: ArrayBuffer;
+}): Promise<void> {
+  const startedAt = Date.now();
+  let stage = "parse";
+
+  try {
+    console.log(
+      `[ingest] Processing ${fileName} (resource=${resourceId}, size=${buffer.byteLength} bytes)`
+    );
+
+    const markdown = await parseDocument(buffer, fileName, fileType);
+    const chunks = chunkMarkdown(markdown);
+    console.log(
+      `[ingest] Parsed ${fileName} into ${chunks.length} chunks in ${Date.now() - startedAt}ms (resource=${resourceId})`
+    );
+
+    stage = "embedding";
+    const embeddingStartedAt = Date.now();
+    const embeddings = await embedTexts(
+      chunks.map((chunk) => chunk.content),
+      { context: `${fileName}, resource=${resourceId}` }
+    );
+    console.log(
+      `[ingest] Embedded ${chunks.length} chunks in ${Date.now() - embeddingStartedAt}ms (${fileName}, resource=${resourceId})`
+    );
+
+    stage = "chunk insertion";
+    const insertionStartedAt = Date.now();
+    await insertDocumentChunks({
+      chunks: chunks.map((chunk, index) => ({
+        resourceId,
+        chatId,
+        content: chunk.content,
+        embedding: embeddings[index],
+        chunkIndex: index,
+        pageNumber: chunk.pageNumber ?? null,
+      })),
+    });
+    console.log(
+      `[ingest] Stored ${chunks.length} chunks in ${Date.now() - insertionStartedAt}ms (${fileName}, resource=${resourceId})`
+    );
+
+    stage = "status update";
+    await updateDocumentResourceStatus({ id: resourceId, status: "ready" });
+    console.log(
+      `[ingest] Ready ${fileName} in ${Date.now() - startedAt}ms (resource=${resourceId})`
+    );
+  } catch (error) {
+    try {
+      await updateDocumentResourceStatus({ id: resourceId, status: "error" });
+    } catch (statusError) {
+      throw new AggregateError(
+        [error, statusError],
+        `Document ingestion failed during ${stage} and its error status could not be saved (${fileName}, resource=${resourceId})`
+      );
+    }
+    throw new Error(
+      `Document ingestion failed during ${stage} (${fileName}, resource=${resourceId})`,
+      { cause: error }
+    );
+  }
 }

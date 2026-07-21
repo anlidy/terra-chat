@@ -17,7 +17,7 @@
 - **多模型支持**: 通过 AI SDK 接入 OpenAI、Anthropic 等多家模型提供商
 - **流式对话**: 实时流式聊天，支持 markdown 渲染和代码高亮
 - **Artifacts**: 在对话中生成并预览代码、文档、表格、图片等内容
-- **RAG 检索增强生成**: 支持文档上传解析（PDF/DOCX/XLSX/PPTX），pgvector 与 PostgreSQL lexical 检索经 RRF 融合，并可用 DashScope 重排序
+- **RAG 检索增强生成**: 支持文档上传解析（PDF/DOCX/XLSX/PPTX/TXT），pgvector 与 PostgreSQL lexical 检索经 RRF 融合，并可用 DashScope 重排序
 - **网络搜索**: 集成 Tavily 搜索引擎，实时获取网络信息
 - **图片生成**: 支持 AI 图片生成（SiliconFlow FLUX）
 - **多模态输入**: 支持文本和文件混合输入
@@ -66,6 +66,8 @@ pnpm format       # 代码格式化
 pnpm test         # 运行 E2E 测试
 pnpm test:unit    # 运行单元测试与 RAG 评测契约测试
 pnpm eval:rag:smoke # 运行离线 RAG smoke 评测
+pnpm eval:rag:real  # 运行 quick 中英文真实评测
+pnpm eval:rag:full  # 运行完整中英文四策略评测
 pnpm db:generate  # 生成数据库迁移文件
 pnpm db:migrate   # 执行数据库迁移
 pnpm db:studio    # 打开 Drizzle Studio
@@ -99,15 +101,22 @@ pgvector 稠密检索 + PostgreSQL lexical 全文检索
 pnpm eval:rag:smoke
 ```
 
-真实数据下载、语料导入、指标口径和四种检索策略的对比方法见
+配置外部服务后，默认运行中英文 quick profile；完整基线使用 `eval:rag:full`：
+
+```bash
+pnpm eval:rag:real
+pnpm eval:rag:full
+```
+
+环境要求、预检、手工单策略运行和指标口径见
 [`evals/README.md`](evals/README.md)。首次记录真实基线前不填入推测数值：
 
 | 策略 | Recall@5 | MRR | NDCG@5 | P95 延迟 |
 | --- | --- | --- | --- | --- |
-| Vector | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` |
-| Lexical | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` |
-| Hybrid | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` |
-| Hybrid + rerank | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` | Run `pnpm eval:rag:smoke` |
+| Vector | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` |
+| Lexical | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` |
+| Hybrid | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` |
+| Hybrid + rerank | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` |
 
 ## 文档与开发约定
 

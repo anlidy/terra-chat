@@ -15,9 +15,9 @@ import {
   sql,
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { cut } from "nodejieba";
 import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
+import { buildTsQuery } from "@/lib/rag/lexical-query";
 import { ChatbotError } from "../errors";
 import { generateUUID } from "../utils";
 import {
@@ -74,6 +74,13 @@ if (process.env.NODE_ENV !== "production") {
 const db = drizzle(client);
 type ChatVisibility = "public" | "private";
 
+export async function closeDatabaseConnection(): Promise<void> {
+  await client.end({ timeout: 5 });
+  if (globalForDb._postgresClient === client) {
+    globalForDb._postgresClient = undefined;
+  }
+}
+
 export async function getUser(email: string): Promise<User[]> {
   try {
     return await db.select().from(user).where(eq(user.email, email));
@@ -101,6 +108,14 @@ export async function createGuestUser() {
       id: user.id,
       email: user.email,
     });
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", error);
+  }
+}
+
+export async function deleteUserById({ id }: { id: string }): Promise<void> {
+  try {
+    await db.delete(user).where(eq(user.id, id));
   } catch (error) {
     throw new ChatbotError("bad_request:database", error);
   }
@@ -983,28 +998,6 @@ export async function similaritySearch({
   }
 }
 
-const CJK_RE = /[一-鿿㐀-䶿]/;
-
-/**
- * Build a tsquery string from user input.
- * Uses jieba for Chinese word segmentation, with prefix matching
- * for CJK terms since the indexed content (to_tsvector('simple'))
- * doesn't segment Chinese.
- */
-function buildTsQuery(query: string): string {
-  try {
-    const segments = cut(query);
-    return segments.map((w) => (CJK_RE.test(w) ? `${w}:*` : w)).join(" & ");
-  } catch {
-    // Fallback: space-split, no prefix matching
-    return query
-      .trim()
-      .split(/\s+/)
-      .filter((w) => w.length > 0)
-      .join(" & ");
-  }
-}
-
 /**
  * Lexical full-text search using PostgreSQL's ts_rank_cd.
  * Uses 'simple' configuration for multilingual support (Chinese + English)
@@ -1023,6 +1016,9 @@ export async function lexicalSearch({
 }) {
   try {
     const tsQuery = buildTsQuery(query);
+    if (tsQuery.length === 0) {
+      return [];
+    }
     const lexicalRank = sql<number>`ts_rank_cd(to_tsvector('simple', ${documentChunk.content}), to_tsquery('simple', ${tsQuery}))`;
 
     const conditions: SQL[] = [

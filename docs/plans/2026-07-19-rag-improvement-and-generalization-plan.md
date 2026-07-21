@@ -4,11 +4,11 @@
 >
 > **范围**：文档生命周期、摄取可靠性、检索质量、通用模块边界、评测与可观测性
 >
-> **最后核验**：2026-07-19
+> **最后核验**：2026-07-21
 
 ## 1. 背景与结论
 
-当前 RAG 已具备完整的聊天文档问答链路：文档上传后经 LlamaCloud 解析、Markdown 切块、智谱 Embedding，写入 PostgreSQL/pgvector；查询通过向量与 PostgreSQL lexical 检索召回，经 RRF 融合和可选 rerank 后供主动检索与 `retrieveDocuments` 工具共同使用。
+当前 RAG 已具备完整的聊天文档问答链路：TXT 在本地解码，其他文档经 LlamaCloud 解析，随后统一进行 Markdown 切块、智谱 Embedding 并写入 PostgreSQL/pgvector；查询通过向量与 PostgreSQL lexical 检索召回，经 RRF 融合和可选 rerank 后供主动检索与 `retrieveDocuments` 工具共同使用。
 
 现有实现适合单个会话内少量文档的局部事实问答，但还不适合作为可复用的知识库模块。主要限制不在于缺少更多检索算法，而在于：文档与会话绑定过早、摄取任务不可恢复、供应商和 `chatId` 深入核心模块、检索没有拒答阈值、引用元数据不稳定，以及真实基线尚未建立。
 
@@ -52,7 +52,7 @@
 | P0 | `after()` 承担完整摄取任务 | 任务中断后可能长期 pending，无法自动恢复 |
 | P0 | 文档使用公开 Blob，状态接口未校验资源归属 | 不满足敏感文档和严格多租户场景 |
 | P0 | 检索无相关性阈值 | 不可回答问题也会返回“最不差”的内容 |
-| P1 | 单 chunk Embedding 无上限并发 | 大文档容易触发限流、内存和成本问题 |
+| P1 | Embedding 已批量化，但摄取任务仍不可恢复 | 单次连接风暴已消除，进程中断后仍需重新摄取 |
 | P1 | 字符数切块、无 overlap，超长单段不会继续拆分 | chunk 大小不稳定，跨边界证据容易丢失 |
 | P1 | 中文查询分词与 PostgreSQL `simple` 索引不对称 | lexical 分支对中文召回不稳定 |
 | P1 | 无 Key 时启发式 rerank 会重新排序 | 未经评测的回退可能降低 RRF 结果质量 |
@@ -153,7 +153,8 @@ type RetrievalRequest = {
 目标：让后续每个改动都能回答“提升了什么、牺牲了什么”。
 
 - [x] 为评测报告增加 commit、corpus hash、pipeline version、embedding model、reranker 和阈值信息。
-- [ ] 将评测语料的创建、摄取、等待 ready、运行和清理自动化，避免手工上传污染结果。
+- [x] 将评测语料的创建、摄取、等待 ready、运行和清理自动化，避免手工上传污染结果。
+- [x] 增加中英文 quick/full profile、按需策略运行和 evaluation chat 复用，降低日常真实评测成本。
 - [ ] 跑出 vector、lexical、hybrid、hybrid + rerank 四组真实基线。
 - [ ] 增加项目实际使用场景的中英文测试集：事实问答、摘要、多文档比较、不可回答、表格/幻灯片。
 - [ ] 增加答案忠实度、引用正确率、输入/输出 token、外部 API 次数和估算成本。
@@ -171,7 +172,7 @@ type RetrievalRequest = {
 - [ ] 引入持久化 `IngestionJob`，状态细分为 queued/parsing/chunking/embedding/indexing/ready/failed/cancelled。
 - [ ] 为任务增加 lease、attempt、超时、指数退避和可重试错误分类。
 - [ ] 使用内容 hash、pipeline version 和唯一约束保证幂等。
-- [ ] Embedding 改为批量请求和有限并发；记录 chunk/批次进度。
+- [x] Embedding 改为最多 64 条的批量请求和有限重试；记录文档、chunk 和批次进度。
 - [ ] chunks 在事务内替换，只有完整成功后才把 Resource 标记 ready。
 - [ ] 增加摄取状态、取消、重试、删除和 chat 删除清理的集成测试。
 

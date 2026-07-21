@@ -4,7 +4,7 @@
 >
 > **范围**：`lib/rag/` 的检索、融合与重排序
 >
-> **最后核验**：2026-07-19
+> **最后核验**：2026-07-21
 
 ## 检索流水线
 
@@ -17,7 +17,9 @@ pgvector 稠密向量检索 + PostgreSQL lexical 全文检索
 ```
 
 PostgreSQL 分支使用 `to_tsvector('simple', ...)`、`to_tsquery` 和
-`ts_rank_cd`。这是 PostgreSQL 原生 lexical/full-text ranking，**不是 BM25**。
+`ts_rank_cd`。查询预处理保留完整的拉丁字母/数字词项、忽略标点，并只对连续中文文本
+使用 jieba 分词和前缀匹配；不会把英文拆成单字符 tsquery。这是 PostgreSQL 原生
+lexical/full-text ranking，**不是 BM25**。
 
 ## 代码边界
 
@@ -26,6 +28,8 @@ PostgreSQL 分支使用 `to_tsvector('simple', ...)`、`to_tsquery` 和
 - `lib/rag/fusion.ts`：纯 RRF；按数据库 `chunkId` 去重。
 - `lib/rag/rerank.ts`：保留检索元数据并增加 `rerankScore`。
 - `lib/rag/config.ts`：集中声明当前 pipeline、embedding model 和维度版本信息。
+- `lib/rag/lexical-query.ts`：构造可安全传给 PostgreSQL 的中英文 tsquery。
+- `lib/rag/parse.ts`：TXT 本地解码；其他受支持文档交给 LlamaCloud 解析。
 - `lib/db/queries.ts`：只负责独立的向量查询和 lexical 查询。
 - `evals/`：离线 smoke 与真实语料检索基准，详见 [`evals/README.md`](../../evals/README.md)。
 
@@ -76,6 +80,9 @@ pnpm db:migrate
 ```bash
 pnpm test:unit
 pnpm eval:rag:smoke
+pnpm eval:rag:real -- --dry-run
+pnpm eval:rag:full -- --dry-run
 ```
 
-真实语料的下载、导入和策略对比命令见 [`evals/README.md`](../../evals/README.md)。
+一键真实评测、手工单策略运行和指标口径见
+[`evals/README.md`](../../evals/README.md)。
