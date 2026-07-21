@@ -12,7 +12,13 @@ const results: RetrievalCaseResult[] = [
   {
     caseId: "hit",
     query: "hit query",
+    category: "fact",
+    language: "en",
     answerable: true,
+    documentRecallAtK: 1,
+    goldDocumentCoverageAtK: 1,
+    evidenceCoverageAtK: 1,
+    contextPrecisionAtK: 1,
     recallAtK: 1,
     mrr: 1,
     ndcgAtK: 1,
@@ -25,7 +31,13 @@ const results: RetrievalCaseResult[] = [
   {
     caseId: "miss",
     query: "miss query",
+    category: "summary",
+    language: "zh",
     answerable: true,
+    documentRecallAtK: 0,
+    goldDocumentCoverageAtK: 0,
+    evidenceCoverageAtK: 0,
+    contextPrecisionAtK: 0,
     recallAtK: 0,
     mrr: 0,
     ndcgAtK: 0,
@@ -49,7 +61,13 @@ const results: RetrievalCaseResult[] = [
   {
     caseId: "false-retrieval",
     query: "unknown query",
+    category: "unanswerable",
+    language: "zh",
     answerable: false,
+    documentRecallAtK: null,
+    goldDocumentCoverageAtK: null,
+    evidenceCoverageAtK: null,
+    contextPrecisionAtK: null,
     recallAtK: null,
     mrr: null,
     ndcgAtK: null,
@@ -93,11 +111,21 @@ test("buildRetrievalReport keeps answerable and unanswerable denominators separa
   assert.equal(report.summary.answerableCount, 2);
   assert.equal(report.summary.unanswerableCount, 1);
   assert.equal(report.summary.recallAtK, 0.5);
+  assert.equal(report.summary.documentRecallAtK, 0.5);
+  assert.equal(report.summary.goldDocumentCoverageAtK, 0.5);
+  assert.equal(report.summary.evidenceCoverageAtK, 0.5);
+  assert.equal(report.summary.contextPrecisionAtK, 0.5);
   assert.equal(report.summary.mrr, 0.5);
   assert.equal(report.summary.ndcgAtK, 0.5);
   assert.equal(report.summary.falseRetrievalRate, 1);
   assert.equal(report.summary.latencyP50Ms, 20);
   assert.equal(report.summary.latencyP95Ms, 30);
+  assert.equal(report.breakdowns.languages.en?.caseCount, 1);
+  assert.equal(report.breakdowns.languages.zh?.caseCount, 2);
+  assert.equal(report.breakdowns.categories.fact?.recallAtK, 1);
+  assert.equal(report.breakdowns.categories.summary?.recallAtK, 0);
+  assert.equal(report.breakdowns.categories.fact?.falseRetrievalRate, null);
+  assert.equal(report.breakdowns.categories.unanswerable?.recallAtK, null);
 });
 
 test("renderMarkdownReport includes metrics and failed cases", () => {
@@ -134,6 +162,11 @@ test("renderMarkdownReport includes metrics and failed cases", () => {
   );
   assert.match(markdown, /Minimum relevance: disabled/);
   assert.match(markdown, /Recall@5/);
+  assert.match(markdown, /Document recall@5/);
+  assert.match(markdown, /Evidence coverage@5/);
+  assert.match(markdown, /Context precision@5/);
+  assert.match(markdown, /Breakdown by Language/);
+  assert.match(markdown, /Breakdown by Category/);
   assert.match(markdown, /NDCG@5/);
   assert.match(markdown, /P95/);
   assert.match(markdown, /miss query/);

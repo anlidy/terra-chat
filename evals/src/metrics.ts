@@ -3,7 +3,13 @@ import type { EvalRetrievedChunk, RagEvalCase } from "./schema";
 export type RetrievalCaseResult = {
   caseId: string;
   query: string;
+  category: string;
+  language: RagEvalCase["language"];
   answerable: boolean;
+  documentRecallAtK: number | null;
+  goldDocumentCoverageAtK: number | null;
+  evidenceCoverageAtK: number | null;
+  contextPrecisionAtK: number | null;
   recallAtK: number | null;
   mrr: number | null;
   ndcgAtK: number | null;
@@ -42,16 +48,30 @@ function fileNameWithoutExtension(fileName: string): string {
   return fileName.replace(/\.[^.]+$/, "");
 }
 
+function matchesDocumentId(
+  documentId: string,
+  chunk: EvalRetrievedChunk
+): boolean {
+  return (
+    documentId === chunk.resourceId ||
+    documentId === fileNameWithoutExtension(chunk.fileName)
+  );
+}
+
+function matchesGoldDocument(
+  evalCase: RagEvalCase,
+  chunk: EvalRetrievedChunk
+): boolean {
+  return evalCase.relevantDocumentIds.some((id) =>
+    matchesDocumentId(id, chunk)
+  );
+}
+
 export function isRelevant(
   evalCase: RagEvalCase,
   chunk: EvalRetrievedChunk
 ): boolean {
-  const documentMatches = evalCase.relevantDocumentIds.some(
-    (id) =>
-      id === chunk.resourceId || id === fileNameWithoutExtension(chunk.fileName)
-  );
-
-  if (!documentMatches) {
+  if (!matchesGoldDocument(evalCase, chunk)) {
     return false;
   }
 
@@ -64,6 +84,47 @@ export function isRelevant(
   );
 
   return pageMatches || evidenceMatches;
+}
+
+function goldDocumentCoverage(
+  evalCase: RagEvalCase,
+  chunks: EvalRetrievedChunk[]
+): number {
+  const goldIds = [...new Set(evalCase.relevantDocumentIds)];
+  if (goldIds.length === 0) {
+    return 0;
+  }
+  return (
+    goldIds.filter((id) => chunks.some((chunk) => matchesDocumentId(id, chunk)))
+      .length / goldIds.length
+  );
+}
+
+function evidenceCoverage(
+  evalCase: RagEvalCase,
+  chunks: EvalRetrievedChunk[]
+): number {
+  const goldChunks = chunks.filter((chunk) =>
+    matchesGoldDocument(evalCase, chunk)
+  );
+  if (evalCase.evidenceTexts.length > 0) {
+    const matched = evalCase.evidenceTexts.filter((evidence) => {
+      const normalizedEvidence = normalizeEvidenceText(evidence);
+      return goldChunks.some((chunk) =>
+        normalizeEvidenceText(chunk.content).includes(normalizedEvidence)
+      );
+    }).length;
+    return matched / evalCase.evidenceTexts.length;
+  }
+  if (evalCase.evidencePages.length > 0) {
+    const pages = [...new Set(evalCase.evidencePages)];
+    return (
+      pages.filter((page) =>
+        goldChunks.some((chunk) => chunk.pageNumber === page)
+      ).length / pages.length
+    );
+  }
+  return Number(goldChunks.length > 0);
 }
 
 export function reciprocalRank(relevance: boolean[]): number {
@@ -152,7 +213,23 @@ export function evaluateRetrievalCase({
   return {
     caseId: evalCase.id,
     query: evalCase.query,
+    category: evalCase.category,
+    language: evalCase.language,
     answerable: evalCase.answerable,
+    documentRecallAtK: evalCase.answerable
+      ? Number(topK.some((chunk) => matchesGoldDocument(evalCase, chunk)))
+      : null,
+    goldDocumentCoverageAtK: evalCase.answerable
+      ? goldDocumentCoverage(evalCase, topK)
+      : null,
+    evidenceCoverageAtK: evalCase.answerable
+      ? evidenceCoverage(evalCase, topK)
+      : null,
+    contextPrecisionAtK: evalCase.answerable
+      ? topK.length === 0
+        ? 0
+        : relevance.filter(Boolean).length / topK.length
+      : null,
     recallAtK: evalCase.answerable ? Number(relevance.some(Boolean)) : null,
     mrr: evalCase.answerable ? reciprocalRank(relevance) : null,
     ndcgAtK: evalCase.answerable ? ndcgAtK(relevance, k) : null,

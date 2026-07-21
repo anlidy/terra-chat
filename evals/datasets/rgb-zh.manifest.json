@@ -2,8 +2,9 @@
   "name": "RGB Chinese refined dataset",
   "source": "https://github.com/chen700564/RGB",
   "dataUrl": "https://raw.githubusercontent.com/chen700564/RGB/master/data/zh_refine.json",
+  "integrationDataUrl": "https://raw.githubusercontent.com/chen700564/RGB/master/data/zh_int.json",
   "license": "CC BY-NC-SA 4.0",
   "licenseNote": "Noncommercial use only; attribution and share-alike terms apply.",
-  "selection": "Sort by numeric id, select the first 15 cases, and retain up to two positive and three negative passages per case.",
+  "selection": "Sort by numeric id; select 15 zh_refine fact cases and 10 zh_int information-integration cases, retaining two positive and three negative passages per answerable case. Derive 5 unanswerable cases from the next zh_refine questions without adding their source passages to the corpus.",
   "retrievedOn": "2026-07-19"
 }

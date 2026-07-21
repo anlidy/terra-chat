@@ -59,6 +59,10 @@ test("evaluateRetrievalCase matches document and evidence page", () => {
   });
 
   assert.equal(result.recallAtK, 1);
+  assert.equal(result.documentRecallAtK, 1);
+  assert.equal(result.goldDocumentCoverageAtK, 1);
+  assert.equal(result.evidenceCoverageAtK, 1);
+  assert.equal(result.contextPrecisionAtK, 0.5);
   assert.equal(result.mrr, 0.5);
   assert.equal(result.ndcgAtK, 1 / Math.log2(3));
   assert.equal(result.falseRetrieval, false);
@@ -84,6 +88,46 @@ test("evaluateRetrievalCase matches document and evidence page", () => {
       vectorDistance: 0.2,
     },
   ]);
+});
+
+test("evaluateRetrievalCase separates document, evidence, and context quality", () => {
+  const result = evaluateRetrievalCase({
+    evalCase: {
+      ...evalCase,
+      relevantDocumentIds: ["handbook", "appendix"],
+      evidenceTexts: ["seven days", "manager approval"],
+      evidencePages: [],
+    },
+    retrieved: [
+      { ...relevantChunk, content: "Submit within seven days." },
+      {
+        ...relevantChunk,
+        chunkId: "same-document-noise",
+        content: "Office opening hours.",
+      },
+      {
+        ...relevantChunk,
+        chunkId: "appendix-hit",
+        fileName: "appendix.pdf",
+        resourceId: "appendix",
+        content: "Manager approval is required.",
+      },
+      {
+        ...relevantChunk,
+        chunkId: "other-noise",
+        fileName: "other.pdf",
+        resourceId: "other",
+        content: "Unrelated content.",
+      },
+    ],
+    latencyMs: 10,
+    k: 5,
+  });
+
+  assert.equal(result.documentRecallAtK, 1);
+  assert.equal(result.goldDocumentCoverageAtK, 1);
+  assert.equal(result.evidenceCoverageAtK, 1);
+  assert.equal(result.contextPrecisionAtK, 0.5);
 });
 
 test("relevance requires a gold document and matches normalized evidence", () => {
@@ -123,6 +167,10 @@ test("unanswerable cases track false retrieval separately", () => {
   });
 
   assert.equal(result.falseRetrieval, true);
+  assert.equal(result.documentRecallAtK, null);
+  assert.equal(result.goldDocumentCoverageAtK, null);
+  assert.equal(result.evidenceCoverageAtK, null);
+  assert.equal(result.contextPrecisionAtK, null);
   assert.equal(result.recallAtK, null);
   assert.equal(result.mrr, null);
   assert.equal(result.ndcgAtK, null);

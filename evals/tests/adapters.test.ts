@@ -6,7 +6,11 @@ import {
   adaptFinanceBenchRows,
   resolveFinanceBenchDocumentUrl,
 } from "../src/adapters/financebench";
-import { adaptRgbRows } from "../src/adapters/rgb";
+import {
+  adaptRgbIntegrationRows,
+  adaptRgbRows,
+  adaptRgbUnanswerableRows,
+} from "../src/adapters/rgb";
 
 async function readJsonLines(path: string): Promise<unknown[]> {
   const contents = await readFile(path, "utf8");
@@ -71,4 +75,43 @@ test("RGB adapter flattens upstream answer aliases", async () => {
   const adapted = adaptRgbRows(rows, 2);
 
   assert.equal(adapted.cases[1]?.expectedAnswer, "第二个答案；第二个别名");
+});
+
+test("RGB integration adapter keeps evidence from both information groups", () => {
+  const adapted = adaptRgbIntegrationRows(
+    [
+      {
+        id: 7,
+        query: "两个事件分别发生在什么时候？",
+        answer: ["一月", "二月"],
+        positive: [["第一组证据", "第一组备选"], ["第二组证据"]],
+        negative: ["干扰一", "干扰二", "干扰三", "未保留干扰"],
+      },
+    ],
+    1
+  );
+
+  assert.equal(adapted.cases[0]?.category, "information-integration");
+  assert.deepEqual(adapted.cases[0]?.evidenceTexts, [
+    "第一组证据",
+    "第二组证据",
+  ]);
+  assert.deepEqual(adapted.cases[0]?.relevantDocumentIds, [
+    "rgb-zh-int-7-positive-0",
+    "rgb-zh-int-7-positive-1",
+  ]);
+  assert.equal(adapted.documents.length, 5);
+});
+
+test("RGB unanswerable adapter excludes source evidence from the corpus", async () => {
+  const rows = JSON.parse(
+    await readFile("evals/fixtures/raw/rgb-zh.json", "utf8")
+  ) as unknown[];
+  const cases = adaptRgbUnanswerableRows(rows, 1, 1);
+
+  assert.equal(cases[0]?.id, "rgb-zh-unanswerable-2");
+  assert.equal(cases[0]?.answerable, false);
+  assert.equal(cases[0]?.category, "unanswerable");
+  assert.deepEqual(cases[0]?.relevantDocumentIds, []);
+  assert.deepEqual(cases[0]?.evidenceTexts, []);
 });

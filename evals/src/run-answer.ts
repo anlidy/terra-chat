@@ -7,20 +7,26 @@ import { getLanguageModel } from "../../lib/ai/providers";
 import { getCustomProviderById } from "../../lib/db/queries";
 import { RAG_PIPELINE_VERSION } from "../../lib/rag/config";
 import { retrieveDocumentChunks } from "../../lib/rag/retrieve";
+import {
+  type AnswerPricing,
+  evaluateCitations,
+  extractCitations,
+  parseAnswerJudge,
+  resolveAnswerPricing,
+} from "./answer-metrics";
 import { latestReportFileStem } from "./report";
 import type { RagEvalCase } from "./schema";
-
-const INPUT_CACHE_HIT_USD_PER_MILLION = 0.0028;
-const INPUT_CACHE_MISS_USD_PER_MILLION = 0.14;
-const OUTPUT_USD_PER_MILLION = 0.28;
 
 type AnswerEvaluationCaseResult = {
   caseId: string;
   answer: string;
   citations: string[];
   faithfulnessScore: number;
+  correctnessScore: number;
+  completenessScore: number;
   judgeRationale: string;
-  citationCorrectness: number;
+  citationPrecision: number;
+  citationRecall: number;
   inputTokens: number;
   outputTokens: number;
   externalApiCalls: {
@@ -29,44 +35,25 @@ type AnswerEvaluationCaseResult = {
     answer: number;
     judge: number;
   };
-  estimatedCostUsd: number;
+  estimatedCostUsd: number | null;
 };
 
-function usageCost(usage: LanguageModelUsage): number {
+function usageCost(
+  usage: LanguageModelUsage,
+  pricing: AnswerPricing | null
+): number | null {
+  if (pricing === null) {
+    return null;
+  }
   const inputTokens = usage.inputTokens ?? 0;
   const cacheReadTokens = usage.inputTokenDetails.cacheReadTokens ?? 0;
   const cacheMissTokens = Math.max(0, inputTokens - cacheReadTokens);
   return (
-    (cacheReadTokens * INPUT_CACHE_HIT_USD_PER_MILLION +
-      cacheMissTokens * INPUT_CACHE_MISS_USD_PER_MILLION +
-      (usage.outputTokens ?? 0) * OUTPUT_USD_PER_MILLION) /
+    (cacheReadTokens * pricing.inputCacheHit +
+      cacheMissTokens * pricing.inputCacheMiss +
+      (usage.outputTokens ?? 0) * pricing.output) /
     1_000_000
   );
-}
-
-function correctCitation(evalCase: RagEvalCase, citation: string): boolean {
-  const stem = path.basename(citation, path.extname(citation));
-  return evalCase.relevantDocumentIds.includes(stem);
-}
-
-function extractCitations(answer: string): string[] {
-  return [
-    ...answer.matchAll(/\[([^\]]+\.(?:docx|pdf|pptx|txt|xlsx))\]/giu),
-  ].map((match) => match[1] as string);
-}
-
-function parseJudge(text: string): {
-  faithfulnessScore: number;
-  rationale: string;
-} {
-  const match = text.match(/SCORE:\s*(0(?:\.\d+)?|1(?:\.0+)?)/iu);
-  if (match?.[1] === undefined) {
-    throw new Error(`Judge returned no valid SCORE: ${text.slice(0, 200)}`);
-  }
-  return {
-    faithfulnessScore: Number(match[1]),
-    rationale: text.replace(match[0], "").trim(),
-  };
 }
 
 export async function runAnswerEvaluation({
@@ -99,6 +86,7 @@ export async function runAnswerEvaluation({
     throw new Error(`Answer evaluation provider not found: ${answerModel}`);
   }
   const model = await getLanguageModel(answerModel, provider.userId);
+  const pricing = resolveAnswerPricing(answerModel);
   const results: AnswerEvaluationCaseResult[] = [];
 
   for (const [index, evalCase] of cases.entries()) {
@@ -131,19 +119,10 @@ export async function runAnswerEvaluation({
       providerOptions: {
         anthropic: { thinking: { type: "disabled" } },
       },
-      prompt: `Judge whether every factual claim in the answer is supported by the context. Score 1 only when fully supported, 0 when unsupported, and use intermediate values for partial support. Do not reward correctness from outside knowledge. Start the response with exactly SCORE: <number from 0 to 1>, followed by a short rationale.\n\nQuestion:\n${evalCase.query}\n\nAnswer:\n${answer}\n\nContext:\n${context}`,
+      prompt: `Evaluate the answer on three independent dimensions from 0 to 1. FAITHFULNESS measures whether every factual claim is supported by the supplied context. CORRECTNESS measures agreement with the expected answer; for an unanswerable case it measures whether the answer correctly refuses. COMPLETENESS measures coverage of the expected answer without omitting required facts. Do not use outside knowledge. Return exactly four labeled lines: FAITHFULNESS: <score>, CORRECTNESS: <score>, COMPLETENESS: <score>, RATIONALE: <short explanation>.\n\nQuestion:\n${evalCase.query}\n\nExpected answer:\n${evalCase.answerable ? evalCase.expectedAnswer : "<unanswerable: should refuse>"}\n\nAnswer:\n${answer}\n\nContext:\n${context}`,
     });
-    const judge = parseJudge(judgeResult.text);
-    const correctCitations = citations.filter((citation) =>
-      correctCitation(evalCase, citation)
-    ).length;
-    const citationCorrectness = evalCase.answerable
-      ? citations.length === 0
-        ? 0
-        : correctCitations / citations.length
-      : citations.length === 0
-        ? 1
-        : 0;
+    const judge = parseAnswerJudge(judgeResult.text);
+    const citationMetrics = evaluateCitations(evalCase, citations);
     const inputTokens =
       (answerResult.usage.inputTokens ?? 0) +
       (judgeResult.usage.inputTokens ?? 0);
@@ -155,8 +134,10 @@ export async function runAnswerEvaluation({
       answer,
       citations,
       faithfulnessScore: judge.faithfulnessScore,
+      correctnessScore: judge.correctnessScore,
+      completenessScore: judge.completenessScore,
       judgeRationale: judge.rationale,
-      citationCorrectness,
+      ...citationMetrics,
       inputTokens,
       outputTokens,
       externalApiCalls: {
@@ -168,13 +149,24 @@ export async function runAnswerEvaluation({
         judge: 1,
       },
       estimatedCostUsd:
-        usageCost(answerResult.usage) + usageCost(judgeResult.usage),
+        pricing === null
+          ? null
+          : (usageCost(answerResult.usage, pricing) ?? 0) +
+            (usageCost(judgeResult.usage, pricing) ?? 0),
     });
     console.log(`[eval:answer] Progress ${index + 1}/${cases.length}`);
   }
 
-  const total = (field: "inputTokens" | "outputTokens" | "estimatedCostUsd") =>
+  const total = (field: "inputTokens" | "outputTokens") =>
     results.reduce((sum, result) => sum + result[field], 0);
+  const average = (
+    field:
+      | "faithfulnessScore"
+      | "correctnessScore"
+      | "completenessScore"
+      | "citationPrecision"
+      | "citationRecall"
+  ) => results.reduce((sum, result) => sum + result[field], 0) / results.length;
   const report = {
     metadata: {
       dataset,
@@ -186,20 +178,15 @@ export async function runAnswerEvaluation({
       answerModel,
       judgeModel: answerModel,
       judgeIndependence: "same-model",
-      pricingUsdPerMillionTokens: {
-        inputCacheHit: INPUT_CACHE_HIT_USD_PER_MILLION,
-        inputCacheMiss: INPUT_CACHE_MISS_USD_PER_MILLION,
-        output: OUTPUT_USD_PER_MILLION,
-      },
+      pricingUsdPerMillionTokens: pricing,
     },
     summary: {
       caseCount: results.length,
-      averageFaithfulness:
-        results.reduce((sum, result) => sum + result.faithfulnessScore, 0) /
-        results.length,
-      averageCitationCorrectness:
-        results.reduce((sum, result) => sum + result.citationCorrectness, 0) /
-        results.length,
+      averageFaithfulness: average("faithfulnessScore"),
+      averageCorrectness: average("correctnessScore"),
+      averageCompleteness: average("completenessScore"),
+      averageCitationPrecision: average("citationPrecision"),
+      averageCitationRecall: average("citationRecall"),
       inputTokens: total("inputTokens"),
       outputTokens: total("outputTokens"),
       externalApiCalls: results.reduce(
@@ -207,7 +194,13 @@ export async function runAnswerEvaluation({
           sum + Object.values(result.externalApiCalls).reduce((a, b) => a + b),
         0
       ),
-      estimatedCostUsd: total("estimatedCostUsd"),
+      estimatedCostUsd:
+        pricing === null
+          ? null
+          : results.reduce(
+              (sum, result) => sum + (result.estimatedCostUsd ?? 0),
+              0
+            ),
     },
     cases: results,
   };

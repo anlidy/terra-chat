@@ -16,19 +16,29 @@ export type RetrievalReport = {
     rerankers: string[];
     minRelevance: number | null;
   };
-  summary: {
-    caseCount: number;
-    answerableCount: number;
-    unanswerableCount: number;
-    errorCount: number;
-    recallAtK: number;
-    mrr: number;
-    ndcgAtK: number;
-    falseRetrievalRate: number;
-    latencyP50Ms: number;
-    latencyP95Ms: number;
+  summary: RetrievalSummary;
+  breakdowns: {
+    languages: Record<string, RetrievalSummary>;
+    categories: Record<string, RetrievalSummary>;
   };
   cases: RetrievalCaseResult[];
+};
+
+export type RetrievalSummary = {
+  caseCount: number;
+  answerableCount: number;
+  unanswerableCount: number;
+  errorCount: number;
+  documentRecallAtK: number | null;
+  goldDocumentCoverageAtK: number | null;
+  evidenceCoverageAtK: number | null;
+  contextPrecisionAtK: number | null;
+  recallAtK: number | null;
+  mrr: number | null;
+  ndcgAtK: number | null;
+  falseRetrievalRate: number | null;
+  latencyP50Ms: number;
+  latencyP95Ms: number;
 };
 
 export function latestReportFileStem(...parts: string[]): string {
@@ -50,16 +60,23 @@ type ReportOptions = {
   minRelevance: number | null;
 };
 
-function average(values: number[]): number {
+function average(values: number[]): number | null {
   if (values.length === 0) {
-    return 0;
+    return null;
   }
   return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 function metricValues(
   results: RetrievalCaseResult[],
-  metric: "recallAtK" | "mrr" | "ndcgAtK"
+  metric:
+    | "documentRecallAtK"
+    | "goldDocumentCoverageAtK"
+    | "evidenceCoverageAtK"
+    | "contextPrecisionAtK"
+    | "recallAtK"
+    | "mrr"
+    | "ndcgAtK"
 ): number[] {
   return results.flatMap((result) => {
     const value = result[metric];
@@ -67,10 +84,7 @@ function metricValues(
   });
 }
 
-export function buildRetrievalReport(
-  results: RetrievalCaseResult[],
-  options: ReportOptions
-): RetrievalReport {
+function buildSummary(results: RetrievalCaseResult[]): RetrievalSummary {
   const answerable = results.filter((result) => result.answerable);
   const unanswerable = results.filter((result) => !result.answerable);
   const falseRetrievals = unanswerable.filter(
@@ -78,6 +92,48 @@ export function buildRetrievalReport(
   ).length;
   const latencies = results.map((result) => result.latencyMs);
 
+  return {
+    caseCount: results.length,
+    answerableCount: answerable.length,
+    unanswerableCount: unanswerable.length,
+    errorCount: results.filter((result) => result.error !== undefined).length,
+    documentRecallAtK: average(metricValues(answerable, "documentRecallAtK")),
+    goldDocumentCoverageAtK: average(
+      metricValues(answerable, "goldDocumentCoverageAtK")
+    ),
+    evidenceCoverageAtK: average(
+      metricValues(answerable, "evidenceCoverageAtK")
+    ),
+    contextPrecisionAtK: average(
+      metricValues(answerable, "contextPrecisionAtK")
+    ),
+    recallAtK: average(metricValues(answerable, "recallAtK")),
+    mrr: average(metricValues(answerable, "mrr")),
+    ndcgAtK: average(metricValues(answerable, "ndcgAtK")),
+    falseRetrievalRate:
+      unanswerable.length === 0 ? null : falseRetrievals / unanswerable.length,
+    latencyP50Ms: percentile(latencies, 0.5),
+    latencyP95Ms: percentile(latencies, 0.95),
+  };
+}
+
+function buildBreakdown(
+  results: RetrievalCaseResult[],
+  key: "category" | "language"
+): Record<string, RetrievalSummary> {
+  const values = [...new Set(results.map((result) => result[key]))].toSorted();
+  return Object.fromEntries(
+    values.map((value) => [
+      value,
+      buildSummary(results.filter((result) => result[key] === value)),
+    ])
+  );
+}
+
+export function buildRetrievalReport(
+  results: RetrievalCaseResult[],
+  options: ReportOptions
+): RetrievalReport {
   return {
     metadata: {
       dataset: options.dataset,
@@ -93,25 +149,30 @@ export function buildRetrievalReport(
       rerankers: options.rerankers,
       minRelevance: options.minRelevance,
     },
-    summary: {
-      caseCount: results.length,
-      answerableCount: answerable.length,
-      unanswerableCount: unanswerable.length,
-      errorCount: results.filter((result) => result.error !== undefined).length,
-      recallAtK: average(metricValues(answerable, "recallAtK")),
-      mrr: average(metricValues(answerable, "mrr")),
-      ndcgAtK: average(metricValues(answerable, "ndcgAtK")),
-      falseRetrievalRate:
-        unanswerable.length === 0 ? 0 : falseRetrievals / unanswerable.length,
-      latencyP50Ms: percentile(latencies, 0.5),
-      latencyP95Ms: percentile(latencies, 0.95),
+    summary: buildSummary(results),
+    breakdowns: {
+      languages: buildBreakdown(results, "language"),
+      categories: buildBreakdown(results, "category"),
     },
     cases: results,
   };
 }
 
-function formatMetric(value: number): string {
-  return value.toFixed(4);
+function renderBreakdown(
+  summaries: Record<string, RetrievalSummary>,
+  k: number
+): string {
+  const rows = Object.entries(summaries)
+    .map(
+      ([name, summary]) =>
+        `| ${escapeTableCell(name)} | ${summary.caseCount} | ${formatMetric(summary.documentRecallAtK)} | ${formatMetric(summary.recallAtK)} | ${formatMetric(summary.evidenceCoverageAtK)} | ${formatMetric(summary.contextPrecisionAtK)} | ${formatMetric(summary.falseRetrievalRate)} | ${summary.latencyP95Ms.toFixed(2)} |`
+    )
+    .join("\n");
+  return `| Slice | Cases | Document recall@${k} | Evidence recall@${k} | Evidence coverage@${k} | Context precision@${k} | False-retrieval | P95 ms |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n${rows}`;
+}
+
+function formatMetric(value: number | null): string {
+  return value === null ? "—" : value.toFixed(4);
 }
 
 function escapeTableCell(value: string): string {
@@ -204,12 +265,24 @@ export function renderMarkdownReport(report: RetrievalReport): string {
 | Answerable cases | ${summary.answerableCount} |
 | Unanswerable cases | ${summary.unanswerableCount} |
 | Errors | ${summary.errorCount} |
-| Recall@${metadata.k} | ${formatMetric(summary.recallAtK)} |
+| Document recall@${metadata.k} | ${formatMetric(summary.documentRecallAtK)} |
+| Gold-document coverage@${metadata.k} | ${formatMetric(summary.goldDocumentCoverageAtK)} |
+| Evidence Recall@${metadata.k} | ${formatMetric(summary.recallAtK)} |
+| Evidence coverage@${metadata.k} | ${formatMetric(summary.evidenceCoverageAtK)} |
+| Context precision@${metadata.k} | ${formatMetric(summary.contextPrecisionAtK)} |
 | MRR | ${formatMetric(summary.mrr)} |
 | NDCG@${metadata.k} | ${formatMetric(summary.ndcgAtK)} |
 | False-retrieval rate | ${formatMetric(summary.falseRetrievalRate)} |
 | Latency P50 (ms) | ${summary.latencyP50Ms.toFixed(2)} |
 | Latency P95 (ms) | ${summary.latencyP95Ms.toFixed(2)} |
+
+## Breakdown by Language
+
+${renderBreakdown(report.breakdowns.languages, metadata.k)}
+
+## Breakdown by Category
+
+${renderBreakdown(report.breakdowns.categories, metadata.k)}
 
 ## Failed Cases
 

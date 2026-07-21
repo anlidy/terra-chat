@@ -31,7 +31,7 @@ lexical/full-text ranking，**不是 BM25**。
 - `lib/rag/lexical-query.ts`：构造可安全传给 PostgreSQL 的中英文 tsquery。
 - `lib/rag/parse.ts`：TXT 本地解码；其他受支持文档交给 LlamaCloud 解析。
 - `lib/db/queries.ts`：只负责独立的向量查询和 lexical 查询。
-- `evals/`：离线 smoke 与真实语料检索基准，详见 [`evals/README.md`](../../evals/README.md)。
+- `evals/`：离线 smoke、分层中英文真实检索基准与可选答案评测；报告分离文档命中、具体证据命中、上下文精确率和拒答误检，详见 [`evals/README.md`](../../evals/README.md)。
 
 标准结果包含 `chunkId`、`resourceId`、文件名、块号、页码，以及可用的
 `vectorDistance`、`lexicalRank`、`fusionScore`、`rerankScore`、实际 `reranker`，

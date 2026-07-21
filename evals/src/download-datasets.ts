@@ -9,7 +9,11 @@ import {
   resolveFinanceBenchDocumentUrl,
   selectFinanceBenchRows,
 } from "./adapters/financebench";
-import { adaptRgbRows } from "./adapters/rgb";
+import {
+  adaptRgbIntegrationRows,
+  adaptRgbRows,
+  adaptRgbUnanswerableRows,
+} from "./adapters/rgb";
 import type { RagEvalCase } from "./schema";
 
 export const SOURCES = {
@@ -19,7 +23,13 @@ export const SOURCES = {
     "https://raw.githubusercontent.com/patronus-ai/financebench/main/data/financebench_document_information.jsonl",
   rgbZh:
     "https://raw.githubusercontent.com/chen700564/RGB/master/data/zh_refine.json",
+  rgbZhIntegration:
+    "https://raw.githubusercontent.com/chen700564/RGB/master/data/zh_int.json",
 } as const;
+
+const RGB_FACT_CASES = 15;
+const RGB_INTEGRATION_CASES = 10;
+const RGB_UNANSWERABLE_CASES = 5;
 
 const documentInformationSchema = z.object({
   doc_name: z.string().min(1),
@@ -33,17 +43,33 @@ function parseJsonLines(contents: string): unknown[] {
     .map((line) => JSON.parse(line) as unknown);
 }
 
-async function fetchResponse(url: string): Promise<Response> {
+type FetchOptions = {
+  attempts?: number;
+  fetcher?: typeof fetch;
+  retryDelayMs?: number;
+  timeoutMs?: number;
+};
+
+async function fetchBody<T>(
+  url: string,
+  readBody: (response: Response) => Promise<T>,
+  {
+    attempts = 3,
+    fetcher = fetch,
+    retryDelayMs = 250,
+    timeoutMs = 15_000,
+  }: FetchOptions = {}
+): Promise<T> {
   let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(15_000),
+      const response = await fetcher(url, {
+        signal: AbortSignal.timeout(timeoutMs),
       });
       if (!response.ok) {
         throw new Error(`Download failed (${response.status}) for ${url}`);
       }
-      return response;
+      return await readBody(response);
     } catch (error) {
       if (
         error instanceof Error &&
@@ -52,18 +78,27 @@ async function fetchResponse(url: string): Promise<Response> {
         throw error;
       }
       lastError = error;
-      if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+      if (attempt < attempts) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, attempt * retryDelayMs)
+        );
       }
     }
   }
-  throw new Error(`Download failed after 3 attempts for ${url}`, {
+  throw new Error(`Download failed after ${attempts} attempts for ${url}`, {
     cause: lastError,
   });
 }
 
-async function fetchText(url: string): Promise<string> {
-  return (await fetchResponse(url)).text();
+export function fetchText(
+  url: string,
+  options?: FetchOptions
+): Promise<string> {
+  return fetchBody(url, (response) => response.text(), options);
+}
+
+function fetchArrayBuffer(url: string): Promise<ArrayBuffer> {
+  return fetchBody(url, (response) => response.arrayBuffer());
 }
 
 function toJsonLines(values: unknown[]): string {
@@ -111,11 +146,13 @@ export async function downloadDatasets(): Promise<void> {
     ].map((directory) => mkdir(directory, { recursive: true }))
   );
 
-  const [financeText, documentText, rgbText] = await Promise.all([
-    fetchText(SOURCES.financebench),
-    fetchText(SOURCES.financebenchDocuments),
-    fetchText(SOURCES.rgbZh),
-  ]);
+  const [financeText, documentText, rgbText, rgbIntegrationText] =
+    await Promise.all([
+      fetchText(SOURCES.financebench),
+      fetchText(SOURCES.financebenchDocuments),
+      fetchText(SOURCES.rgbZh),
+      fetchText(SOURCES.rgbZhIntegration),
+    ]);
   await Promise.all([
     writeFile(path.join(rawDirectory, "financebench.jsonl"), financeText),
     writeFile(
@@ -123,6 +160,10 @@ export async function downloadDatasets(): Promise<void> {
       documentText
     ),
     writeFile(path.join(rawDirectory, "rgb-zh.json"), rgbText),
+    writeFile(
+      path.join(rawDirectory, "rgb-zh-integration.jsonl"),
+      rgbIntegrationText
+    ),
   ]);
 
   // Parse document information early so we can filter out documents that are
@@ -191,7 +232,30 @@ export async function downloadDatasets(): Promise<void> {
   }
 
   const rgbSource = z.array(z.unknown()).parse(parseJsonLines(rgbText));
-  const rgb = adaptRgbRows(rgbSource, 15);
+  const rgbIntegrationSource = z
+    .array(z.unknown())
+    .parse(parseJsonLines(rgbIntegrationText));
+  const rgbFacts = adaptRgbRows(rgbSource, RGB_FACT_CASES);
+  const rgbIntegration = adaptRgbIntegrationRows(
+    rgbIntegrationSource,
+    RGB_INTEGRATION_CASES
+  );
+  const rgbUnanswerable = adaptRgbUnanswerableRows(
+    rgbSource,
+    RGB_FACT_CASES,
+    RGB_UNANSWERABLE_CASES
+  );
+  if (rgbUnanswerable.length !== RGB_UNANSWERABLE_CASES) {
+    throw new Error(
+      `Unable to derive ${RGB_UNANSWERABLE_CASES} RGB Chinese unanswerable cases`
+    );
+  }
+  const rgbCases = [
+    ...rgbFacts.cases,
+    ...rgbIntegration.cases,
+    ...rgbUnanswerable,
+  ];
+  const rgbDocuments = [...rgbFacts.documents, ...rgbIntegration.documents];
   await Promise.all([
     writeFile(
       path.join(normalizedDirectory, "financebench.jsonl"),
@@ -199,9 +263,9 @@ export async function downloadDatasets(): Promise<void> {
     ),
     writeFile(
       path.join(normalizedDirectory, "rgb-zh.jsonl"),
-      toJsonLines(rgb.cases)
+      toJsonLines(rgbCases)
     ),
-    ...rgb.documents.map((document) =>
+    ...rgbDocuments.map((document) =>
       writeFile(
         path.join(rgbCorpusDirectory, `${document.id}.txt`),
         `${document.content}\n`
@@ -228,7 +292,7 @@ export async function downloadDatasets(): Promise<void> {
       continue;
     }
     try {
-      const contents = await (await fetchResponse(url)).arrayBuffer();
+      const contents = await fetchArrayBuffer(url);
       await writeFile(outputPath, new Uint8Array(contents));
     } catch (error) {
       console.warn(
@@ -238,8 +302,12 @@ export async function downloadDatasets(): Promise<void> {
   }
 
   console.log(`FinanceBench cases: ${selectedFinanceCases.length}`);
-  console.log(`RGB Chinese cases: ${rgb.cases.length}`);
-  console.log(`Generated unanswerable cases: ${unanswerableCases.length}`);
+  console.log(
+    `RGB Chinese cases: ${rgbCases.length} (${rgbFacts.cases.length} fact, ${rgbIntegration.cases.length} integration, ${rgbUnanswerable.length} unanswerable)`
+  );
+  console.log(
+    `Generated unanswerable cases: ${unanswerableCases.length + rgbUnanswerable.length}`
+  );
 }
 
 if (require.main === module) {

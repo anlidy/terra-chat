@@ -109,10 +109,12 @@ pnpm eval:rag:real
 pnpm eval:rag:full
 ```
 
-环境要求、预检、手工单策略运行和指标口径见
-[`evals/README.md`](evals/README.md)。首次记录真实基线前不填入推测数值：
+full profile 当前覆盖 35 个 FinanceBench 英文 case、30 个 RGB 中文 case 和 10 个
+中英项目场景，并分别报告文档召回、具体证据召回/覆盖、上下文精确率、拒答误检和延迟。
+环境要求、预检、手工单策略运行和完整指标口径见 [`evals/README.md`](evals/README.md)。
+首次记录真实基线前不填入推测数值：
 
-| 策略 | Recall@5 | MRR | NDCG@5 | P95 延迟 |
+| 策略 | Document Recall@5 | Evidence Recall@5 | Context Precision@5 | P95 延迟 |
 | --- | --- | --- | --- | --- |
 | Vector | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` |
 | Lexical | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` | Run `pnpm eval:rag:full` |

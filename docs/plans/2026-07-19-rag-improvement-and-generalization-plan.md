@@ -42,7 +42,7 @@
 - 主动检索和模型工具共用 `lib/rag/retrieve.ts`，避免两条检索链路继续漂移。
 - `RetrievedChunk` 已包含稳定的 chunk/resource 标识和分阶段分数。
 - RRF、检索编排、指标、数据适配器和路由边界已有离线测试。
-- `evals/` 已能生成 Recall@K、MRR、NDCG、false-retrieval rate 和延迟报告。
+- `evals/` 已能生成 document/evidence recall、gold-document/evidence coverage、context precision、MRR、NDCG、false-retrieval rate、延迟和语言/题型切片报告。
 
 ### 2.3 已确认的问题
 
@@ -57,7 +57,7 @@
 | P1 | 中文查询分词与 PostgreSQL `simple` 索引不对称 | lexical 分支对中文召回不稳定 |
 | P1 | 无 Key 时启发式 rerank 会重新排序 | 未经评测的回退可能降低 RRF 结果质量 |
 | P1 | `chatId`、环境变量和供应商写入核心流程 | 难以支持知识库、跨会话复用和替换供应商 |
-| P2 | 缺少真实检索和答案质量基线 | 无法证明优化提升，也无法设置发布门槛 |
+| P2 | 扩展后的 full 检索和答案质量基线尚未重跑 | 已有 quick 历史基线，但还不能为新增中文信息整合、中文拒答和诊断指标设置发布门槛 |
 
 ## 3. 目标与非目标
 
@@ -161,6 +161,11 @@ type RetrievalRequest = {
 - [x] 在报告中记录远端 reranker 的尝试、失败和回退原因；不能只记录最终使用的 reranker。
 - [x] 修正报告未记录实际 reranker 的设计偏差。
 - [x] 将检索、smoke 和答案报告统一为稳定的 `*-latest` 文件名，同一评测组合覆盖上一份报告，避免按时间戳无限累积。
+- [x] 将检索命中拆成 document recall、gold-document coverage、evidence recall、evidence coverage 和 context precision，并按 language/category 输出切片。
+- [x] 将中文 full 集从 15 个单跳事实题扩展为 15 fact、10 information-integration、5 corpus-unanswerable；full 总语言分布为 40 EN / 35 ZH。
+- [x] 将答案评测拆成 faithfulness、correctness、completeness、citation precision 和 citation recall；未知模型不再套用 DeepSeek 价格。
+- [x] 将公开数据的响应体读取纳入超时重试边界，避免大 JSON body 超时后绕过重试和 URL 错误上下文。
+- [ ] 使用扩展后的 cases、指标 schema 和稳定 `*-latest` 报告重跑 full 四策略与代表性 answer-eval，记录新的 case/corpus hash 和发布门槛候选值。
 
 验收：相同 corpus/pipeline version 可重复运行；报告足以定位每个失败 case；smoke 分数不再被当作真实质量证明。
 
@@ -175,6 +180,9 @@ type RetrievalRequest = {
 - 新增 10-case `project-scenarios` 固定集，覆盖中英事实、摘要、多文档比较、不可回答、表格和幻灯片结构内容；4 份 TXT 语料可直接审阅并走生产切块、Embedding 和检索链路。该集合验证内容形态，不替代阶段 3 对真实 XLSX/PPTX 解析和 metadata 的验证。
 - 新增可选 answer-eval：复用账号内显式指定的模型生成回答并执行 LLM faithfulness judge，以 gold document 做确定性引用核验，同时保存 token、embedding/rerank/answer/judge 调用数和按官方价格计算的成本。报告明确记录 answer 与 judge 是否为同一模型。
 - 评测报告不再使用时间戳文件名：检索报告按 dataset/profile、strategy 和 rerank 组合覆盖对应的 `*-latest.json`/`*.md`，答案报告按 dataset 覆盖 `*-answer-latest.json`，smoke 沿用 `smoke-latest`。
+- 检索报告新增 document recall、gold-document coverage、evidence coverage 和 context precision；原 `Recall@K` 明确命名为 Evidence Recall，并在 JSON/Markdown 中按 language/category 输出切片。这样 FinanceBench 可以区分“正确 PDF 已找到”和“具体页码/证据未命中”，多文档题可以看到 gold 文档及证据覆盖不足。
+- RGB 中文 full 集新增官方 `zh_int.json` 的 10 个 information-integration cases，并从未摄取其 source passages 的后续 `zh_refine.json` 问题派生 5 个 corpus-unanswerable cases；保留原 15 个 fact cases 后共 30 题、125 份正负例 TXT。公开数据下载在 `fetch()` 和 body 消费阶段统一执行最多 3 次有限重试。
+- answer-eval 的同模型 judge 现在分别输出 faithfulness、correctness 和 completeness；确定性引用指标拆分为 precision/recall，并避免重复引用增加 precision。只有已登记价格的 `deepseek-v4-flash` 生成成本估算，其他模型明确记录 `null`。
 - 使用同一 quick corpus、`chat-rag-v1` 和 `zhipu/embedding-3:1024` 跑完中英文四策略矩阵。FinanceBench case hash 为 `sha256:db1493c63739096eebee933e8083af06a65c57318d1702c0e0a71d70ab6790fe`，RGB 中文 case hash 为 `sha256:fa3ac8396ea3152325bc5176a79fc37a8d973ec8dfcde4d081d9a29d854967ec`。
 
 | 数据集 | 策略 | Recall@5 | MRR | NDCG@5 | False retrieval | P50 / P95 ms | 实际 reranker |
@@ -192,23 +200,27 @@ type RetrievalRequest = {
 | Project scenarios | hybrid | 1.0000 | 0.8125 | 0.8516 | 1.0000 | 670.40 / 1701.42 | disabled |
 | Project scenarios | hybrid + rerank | 1.0000 | 1.0000 | 1.0000 | 1.0000 | 828.59 / 1083.66 | aliyun/qwen3-rerank |
 
-这组数据是开发期 quick 基线，不是发布门槛。最初运行旧 DashScope `gte-rerank` 时 Key 返回 401 并回退到 heuristic；2026-07-21 迁移到工作空间版 `qwen3-rerank` 后，复用同一 evaluation chat 重跑两组 hybrid + rerank，10 次远端请求全部成功，报告同时记录远端尝试和实际 reranker。FinanceBench top results 多数已命中正确文件，但 PDF chunk 的 `pageNumber` 为 `null`，且 top-k 未包含完整 gold evidence，因此按当前“文档 + 页码或 evidence 文本”口径仍为 0。RGB 中文 NDCG@5 从 heuristic 的 0.9295 提升到 1.0000，但 P95 从 973.35 ms 增至 2260.64 ms；FinanceBench P95 从 1965.54 ms 增至 4068.84 ms。中文 lexical 同样为 0，确认当前 hybrid 的中文成绩完全来自 vector 分支。
+这组数据是升级前的开发期 quick 基线，不是发布门槛；quick case 选择未变，但报告 schema 已扩展，full 中文 corpus 也已变化，因此不得把本表的 case/corpus hash 当作扩展后的 full 基线。最初运行旧 DashScope `gte-rerank` 时 Key 返回 401 并回退到 heuristic；2026-07-21 迁移到工作空间版 `qwen3-rerank` 后，复用同一 evaluation chat 重跑两组 hybrid + rerank，10 次远端请求全部成功，报告同时记录远端尝试和实际 reranker。FinanceBench top results 多数已命中正确文件，但 PDF chunk 的 `pageNumber` 为 `null`，且 top-k 未包含完整 gold evidence，因此旧单一 evidence 口径为 0；新报告会同时给出 document recall 以暴露这一差异。RGB 中文 NDCG@5 从 heuristic 的 0.9295 提升到 1.0000，但 P95 从 973.35 ms 增至 2260.64 ms；FinanceBench P95 从 1965.54 ms 增至 4068.84 ms。中文 lexical 同样为 0，确认当前 hybrid 的中文成绩完全来自 vector 分支。
 
 Project scenarios case hash 为 `sha256:d1434a9c40ab37d11e717d1d7fe23a9deb9964abcdc3da2084616f067db8d595`，corpus hash 为 `sha256:fe1a239f1c07f1a3646c0f37e9da3a3062f7cba69b97e21b411977f2ee0be04f`。Qwen3 将可回答 case 的 MRR/NDCG 提升到 1.0，但四种策略对不可回答问题要么全部返回结果，要么 lexical 对所有问题都返回空；这确认 rerank 不能替代拒答阈值，且当前 lexical 分支不构成有效召回来源。
 
-使用当前账号 `deepseek-v4-flash` 对 project scenarios 执行 10-case answer + same-model judge：平均 faithfulness 为 1.0000，确定性引用正确率为 1.0000，输入/输出 token 为 7,411/3,540，端到端外部 API 调用 40 次，按缓存 token 明细和官方 V4 Flash 价格估算为 USD 0.00153702。同模型 judge 存在系统性偏乐观风险，这组分数是可重复基线，不是独立裁判结论。
+使用当前账号 `deepseek-v4-flash` 对 project scenarios 执行的旧 10-case answer + same-model judge 基线为：平均 faithfulness 1.0000、旧版引用正确率 1.0000、输入/输出 token 7,411/3,540、端到端外部 API 调用 40 次、估算成本 USD 0.00153702。同模型 judge 存在系统性偏乐观风险，且新版报告已拆分 correctness、completeness、citation precision/recall，因此该旧报告只用于历史参照，必须重跑后才能形成新答案基线。
 
-阶段 0 验收已完成：固定 corpus/pipeline 可重复运行，检索和答案报告均保存逐 case 诊断、模型、token、调用和成本信息，真实基线与 smoke 明确分离。
+阶段 0 的可重复运行框架和逐 case 诊断已实现，真实基线与 smoke 已明确分离；扩展后的 full cases、诊断指标和 answer schema 尚未完成线上重跑，所以阶段 0 保持 `In progress`，不得标记完成。
 
-下一步可以添加：
+下一步：
 
-- 增加答案生成评测及忠实度、引用、token、外部 API 调用和成本字段；
-- 在阶段 3 依据当前失败样本比较 PDF 页码保留、长问题 lexical 策略和拒答阈值，任何方案都必须与本表使用相同 case/corpus hash 对比。
+- 使用扩展后的 full 语料运行四策略矩阵，并用稳定 `*-latest` 报告记录新 case/corpus hash；
+- 对代表性数据集重跑 answer-eval，建立 correctness、completeness、citation precision/recall 新基线；
+- 在阶段 3 依据 document recall 与 evidence recall 的差距比较 PDF 页码保留、长问题 lexical 策略和拒答阈值，任何优化都必须与同一扩展 case/corpus hash 对比。
 
 本轮验证证据：
 
-- `pnpm test:unit`：51 个测试通过；
-- `pnpm eval:rag:smoke`：连续运行两次均有 3 个 fixture case 成功，目录中保持仅有 `smoke-latest.json` 和 `smoke-latest.md`，第二次报告的 `generatedAt` 更新为 `2026-07-21T10:53:44.748Z`，确认覆盖而非新增文件；
+- `pnpm eval:rag:download`：成功生成 30 个 FinanceBench 可回答 case、5 个 FinanceBench 不可回答 case，以及 30 个 RGB 中文 case（15 fact、10 information-integration、5 unanswerable）；中文 answerable corpus 为 125 份 TXT；
+
+- `pnpm test:unit`：60 个测试通过，包含新增的诊断指标、language/category 切片、RGB information-integration/unanswerable adapter、答案评分/引用/价格和下载 body 重试契约；
+- `pnpm eval:rag:smoke`：3 个 fixture case 成功；报告包含 document/evidence recall、gold-document/evidence coverage、context precision 以及 language/category 切片，并覆盖 `smoke-latest.json` 和 `smoke-latest.md`；
+- `pnpm eval:rag:full -- --dry-run`：预检通过；计划 35 个 FinanceBench case/22 PDF、30 个 RGB 中文 case/125 TXT、10 个 project case/4 TXT，共 151 份文档和 12 个检索 run；
 - `pnpm lint`：通过；
 - `pnpm exec tsc --noEmit --incremental false`：通过；
 - `pnpm eval:rag:real -- --reuse-chat=b96df0c0-5e23-4650-b2d3-59f5ef43b258 --profile=quick --dataset=all --strategies=all`：8 个真实检索 run、40 个 case 执行完成，无 case exception；DashScope 的 401 回退限制如上记录。

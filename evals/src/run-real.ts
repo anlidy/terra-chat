@@ -271,7 +271,7 @@ function selectedDatasetKeys(dataset: DatasetOption): DatasetKey[] {
   return dataset === "all" ? ["en", "zh", "project"] : [dataset];
 }
 
-function expectedCorpusFileNames(
+export function expectedCorpusFileNames(
   dataset: DatasetKey,
   cases: RagEvalCase[]
 ): string[] {
@@ -296,6 +296,7 @@ function expectedCorpusFileNames(
   }
 
   return cases
+    .filter((evalCase) => evalCase.answerable)
     .flatMap((evalCase) => [
       `${evalCase.id}-positive-0.txt`,
       `${evalCase.id}-positive-1.txt`,

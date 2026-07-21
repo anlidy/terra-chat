@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  expectedCorpusFileNames,
   parseRealEvaluationConfig,
   REAL_RETRIEVAL_RUNS,
   selectProfileCases,
@@ -122,6 +123,42 @@ test("selectProfileCases keeps full data or a deterministic quick subset", () =>
   assert.throws(
     () => selectProfileCases(cases, "quick", ["missing"]),
     /Quick profile references missing cases: missing/u
+  );
+});
+
+test("RGB corpus planning excludes documents for unanswerable cases", () => {
+  const baseCase = {
+    id: "rgb-zh-1",
+    query: "问题",
+    expectedAnswer: "答案",
+    relevantDocumentIds: ["rgb-zh-1-positive-0", "rgb-zh-1-positive-1"],
+    evidenceTexts: ["证据一", "证据二"],
+    evidencePages: [],
+    category: "fact",
+    language: "zh" as const,
+    answerable: true,
+  };
+
+  assert.deepEqual(
+    expectedCorpusFileNames("zh", [
+      baseCase,
+      {
+        ...baseCase,
+        id: "rgb-zh-unanswerable-2",
+        expectedAnswer: "",
+        relevantDocumentIds: [],
+        evidenceTexts: [],
+        category: "unanswerable",
+        answerable: false,
+      },
+    ]),
+    [
+      "rgb-zh-1-negative-0.txt",
+      "rgb-zh-1-negative-1.txt",
+      "rgb-zh-1-negative-2.txt",
+      "rgb-zh-1-positive-0.txt",
+      "rgb-zh-1-positive-1.txt",
+    ]
   );
 });
 
