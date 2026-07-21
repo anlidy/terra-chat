@@ -160,6 +160,7 @@ type RetrievalRequest = {
 - [x] 增加答案忠实度、引用正确率、输入/输出 token、外部 API 次数和估算成本。
 - [x] 在报告中记录远端 reranker 的尝试、失败和回退原因；不能只记录最终使用的 reranker。
 - [x] 修正报告未记录实际 reranker 的设计偏差。
+- [x] 将检索、smoke 和答案报告统一为稳定的 `*-latest` 文件名，同一评测组合覆盖上一份报告，避免按时间戳无限累积。
 
 验收：相同 corpus/pipeline version 可重复运行；报告足以定位每个失败 case；smoke 分数不再被当作真实质量证明。
 
@@ -173,6 +174,7 @@ type RetrievalRequest = {
 - 远端排序已从下线的 `gte-rerank` 迁移到工作空间版 `qwen3-rerank`；报告会结构化记录远端成功或失败尝试、错误原因以及最终回退方式，配置使用 `ALIYUN_RERANK_API_KEY` 和 `ALIYUN_RERANK_BASE_URL`。
 - 新增 10-case `project-scenarios` 固定集，覆盖中英事实、摘要、多文档比较、不可回答、表格和幻灯片结构内容；4 份 TXT 语料可直接审阅并走生产切块、Embedding 和检索链路。该集合验证内容形态，不替代阶段 3 对真实 XLSX/PPTX 解析和 metadata 的验证。
 - 新增可选 answer-eval：复用账号内显式指定的模型生成回答并执行 LLM faithfulness judge，以 gold document 做确定性引用核验，同时保存 token、embedding/rerank/answer/judge 调用数和按官方价格计算的成本。报告明确记录 answer 与 judge 是否为同一模型。
+- 评测报告不再使用时间戳文件名：检索报告按 dataset/profile、strategy 和 rerank 组合覆盖对应的 `*-latest.json`/`*.md`，答案报告按 dataset 覆盖 `*-answer-latest.json`，smoke 沿用 `smoke-latest`。
 - 使用同一 quick corpus、`chat-rag-v1` 和 `zhipu/embedding-3:1024` 跑完中英文四策略矩阵。FinanceBench case hash 为 `sha256:db1493c63739096eebee933e8083af06a65c57318d1702c0e0a71d70ab6790fe`，RGB 中文 case hash 为 `sha256:fa3ac8396ea3152325bc5176a79fc37a8d973ec8dfcde4d081d9a29d854967ec`。
 
 | 数据集 | 策略 | Recall@5 | MRR | NDCG@5 | False retrieval | P50 / P95 ms | 实际 reranker |
@@ -205,8 +207,8 @@ Project scenarios case hash 为 `sha256:d1434a9c40ab37d11e717d1d7fe23a9deb9964ab
 
 本轮验证证据：
 
-- `pnpm test:unit`：48 个测试通过；
-- `pnpm eval:rag:smoke`：3 个 fixture case 运行成功；
+- `pnpm test:unit`：51 个测试通过；
+- `pnpm eval:rag:smoke`：连续运行两次均有 3 个 fixture case 成功，目录中保持仅有 `smoke-latest.json` 和 `smoke-latest.md`，第二次报告的 `generatedAt` 更新为 `2026-07-21T10:53:44.748Z`，确认覆盖而非新增文件；
 - `pnpm lint`：通过；
 - `pnpm exec tsc --noEmit --incremental false`：通过；
 - `pnpm eval:rag:real -- --reuse-chat=b96df0c0-5e23-4650-b2d3-59f5ef43b258 --profile=quick --dataset=all --strategies=all`：8 个真实检索 run、40 个 case 执行完成，无 case exception；DashScope 的 401 回退限制如上记录。

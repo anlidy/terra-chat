@@ -18,7 +18,11 @@ import {
   hashText,
   resolveSourceRevision,
 } from "./provenance";
-import { buildRetrievalReport, renderMarkdownReport } from "./report";
+import {
+  buildRetrievalReport,
+  latestReportFileStem,
+  renderMarkdownReport,
+} from "./report";
 import { evalRetrievedChunkSchema, parseEvalCases } from "./schema";
 
 const K = 5;
@@ -216,8 +220,7 @@ export async function runRetrieval(
     minRelevance: null,
   });
   const markdown = renderMarkdownReport(report);
-  const timestamp = report.metadata.generatedAt.replaceAll(/[:.]/gu, "-");
-  const fileStem = `${dataset}-${strategy}-${timestamp}`;
+  const fileStem = latestReportFileStem(dataset, strategy);
   const resultsDirectory = path.resolve("evals/results");
 
   await mkdir(resultsDirectory, { recursive: true });

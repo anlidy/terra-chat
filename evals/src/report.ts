@@ -31,6 +31,10 @@ export type RetrievalReport = {
   cases: RetrievalCaseResult[];
 };
 
+export function latestReportFileStem(...parts: string[]): string {
+  return `${parts.join("-")}-latest`;
+}
+
 type ReportOptions = {
   dataset: string;
   strategy: string;

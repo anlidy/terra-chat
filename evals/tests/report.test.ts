@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { RetrievalCaseResult } from "../src/metrics";
-import { buildRetrievalReport, renderMarkdownReport } from "../src/report";
+import {
+  buildRetrievalReport,
+  latestReportFileStem,
+  renderMarkdownReport,
+} from "../src/report";
 
 const results: RetrievalCaseResult[] = [
   {
@@ -56,6 +60,18 @@ const results: RetrievalCaseResult[] = [
     topResults: [],
   },
 ];
+
+test("latestReportFileStem produces stable overwrite targets", () => {
+  assert.equal(latestReportFileStem("smoke"), "smoke-latest");
+  assert.equal(
+    latestReportFileStem("financebench-quick", "hybrid-rerank"),
+    "financebench-quick-hybrid-rerank-latest"
+  );
+  assert.equal(
+    latestReportFileStem("project-scenarios", "answer"),
+    "project-scenarios-answer-latest"
+  );
+});
 
 test("buildRetrievalReport keeps answerable and unanswerable denominators separate", () => {
   const report = buildRetrievalReport(results, {

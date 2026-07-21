@@ -7,6 +7,7 @@ import { getLanguageModel } from "../../lib/ai/providers";
 import { getCustomProviderById } from "../../lib/db/queries";
 import { RAG_PIPELINE_VERSION } from "../../lib/rag/config";
 import { retrieveDocumentChunks } from "../../lib/rag/retrieve";
+import { latestReportFileStem } from "./report";
 import type { RagEvalCase } from "./schema";
 
 const INPUT_CACHE_HIT_USD_PER_MILLION = 0.0028;
@@ -212,9 +213,11 @@ export async function runAnswerEvaluation({
   };
   const resultsDirectory = path.resolve("evals/results");
   await mkdir(resultsDirectory, { recursive: true });
-  const timestamp = report.metadata.generatedAt.replaceAll(/[:.]/gu, "-");
   await writeFile(
-    path.join(resultsDirectory, `${dataset}-answer-${timestamp}.json`),
+    path.join(
+      resultsDirectory,
+      `${latestReportFileStem(dataset, "answer")}.json`
+    ),
     `${JSON.stringify(report, null, 2)}\n`
   );
   console.log(JSON.stringify(report.summary, null, 2));

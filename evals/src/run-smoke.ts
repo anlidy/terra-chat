@@ -6,7 +6,11 @@ import { z } from "zod";
 import { RAG_PIPELINE_VERSION } from "../../lib/rag/config";
 import { evaluateRetrievalCase } from "./metrics";
 import { hashPath, resolveSourceRevision } from "./provenance";
-import { buildRetrievalReport, renderMarkdownReport } from "./report";
+import {
+  buildRetrievalReport,
+  latestReportFileStem,
+  renderMarkdownReport,
+} from "./report";
 import {
   evalRetrievedChunkSchema,
   parseEvalCases,
@@ -76,14 +80,15 @@ async function main(): Promise<void> {
   });
   const markdown = renderMarkdownReport(report);
   const resultsDirectory = path.resolve("evals/results");
+  const fileStem = latestReportFileStem("smoke");
 
   await mkdir(resultsDirectory, { recursive: true });
   await Promise.all([
     writeFile(
-      path.join(resultsDirectory, "smoke-latest.json"),
+      path.join(resultsDirectory, `${fileStem}.json`),
       `${JSON.stringify(report, null, 2)}\n`
     ),
-    writeFile(path.join(resultsDirectory, "smoke-latest.md"), markdown),
+    writeFile(path.join(resultsDirectory, `${fileStem}.md`), markdown),
   ]);
   process.stdout.write(markdown);
 }
