@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
-import { getChatById, saveChat } from "@/lib/db/queries";
+import { getChatById, getProjectById, saveChat } from "@/lib/db/queries";
+import { deleteDocumentBlob } from "@/lib/document-blob";
 import { ingest } from "@/lib/rag/ingest";
 
 const DOCUMENT_TYPES = [
@@ -22,7 +24,13 @@ const FileSchema = z.object({
     })
     .refine(
       (file) =>
-        ["image/jpeg", "image/png", ...DOCUMENT_TYPES].includes(file.type),
+        [
+          "image/jpeg",
+          "image/png",
+          "image/gif",
+          "image/webp",
+          ...DOCUMENT_TYPES,
+        ].includes(file.type),
       {
         message:
           "File type should be JPEG, PNG, GIF, WebP, PDF, DOCX, XLSX, PPTX, or TXT",
@@ -32,6 +40,7 @@ const FileSchema = z.object({
 
 const RequestSchema = z.object({
   chatId: z.string().uuid().optional(),
+  projectId: z.string().uuid().optional(),
 });
 
 export async function POST(request: Request) {
@@ -49,14 +58,17 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("file") as Blob;
     const chatId = formData.get("chatId") as string | null;
+    const projectId = formData.get("projectId") as string | null;
 
     if (!file) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // Validate chatId if provided
-    if (chatId) {
-      const validatedRequest = RequestSchema.safeParse({ chatId });
+    if (chatId || projectId) {
+      const validatedRequest = RequestSchema.safeParse({
+        chatId: chatId ?? undefined,
+        projectId: projectId ?? undefined,
+      });
       if (!validatedRequest.success) {
         return NextResponse.json(
           { error: "Invalid chatId format" },
@@ -76,12 +88,66 @@ export async function POST(request: Request) {
 
     const filename = (formData.get("file") as File).name;
     const fileBuffer = await file.arrayBuffer();
-
-    const data = await put(filename, fileBuffer, { access: "public" });
-
     const isDocument = DOCUMENT_TYPES.includes(file.type);
+    let collectionId: string | null = null;
+    if (isDocument && !(chatId || projectId)) {
+      return NextResponse.json(
+        { error: "Choose a project or conversation for this document." },
+        { status: 400 }
+      );
+    }
+    if (isDocument && projectId) {
+      const existingProject = await getProjectById({
+        id: projectId,
+        userId: session.user.id,
+      });
+      if (!existingProject) {
+        return NextResponse.json(
+          { error: "Project not found" },
+          { status: 404 }
+        );
+      }
+      collectionId = existingProject.collectionId;
+    } else if (isDocument && chatId) {
+      let existingChat = await getChatById({ id: chatId });
+      if (!existingChat) {
+        await saveChat({
+          id: chatId,
+          userId: session.user.id,
+          title: filename,
+          visibility: "private",
+        });
+        existingChat = await getChatById({ id: chatId });
+      }
+      if (existingChat?.userId !== session.user.id) {
+        return NextResponse.json(
+          { error: "You do not have access to this conversation." },
+          { status: 403 }
+        );
+      }
+      collectionId = existingChat.collectionId;
+    }
 
-    if (isDocument && chatId) {
+    const pathname = `${session.user.id}/${crypto.randomUUID()}-${filename}`;
+    const privateBlobToken = process.env.PRIVATE_BLOB_READ_WRITE_TOKEN;
+    if (isDocument && !privateBlobToken) {
+      return NextResponse.json(
+        { error: "Private document storage is not configured." },
+        { status: 503 }
+      );
+    }
+    const data = isDocument
+      ? await put(pathname, fileBuffer, {
+          access: "private",
+          addRandomSuffix: true,
+          token: privateBlobToken,
+        })
+      : await put(pathname, fileBuffer, {
+          access: "public",
+          addRandomSuffix: true,
+        });
+
+    if (isDocument && (chatId || projectId)) {
       const fileTypeMap: Record<string, string> = {
         "application/pdf": "pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
@@ -94,40 +160,35 @@ export async function POST(request: Request) {
       };
       const fileType = fileTypeMap[file.type];
 
-      // Ensure chat exists (create if it doesn't — the user may upload files
-      // before sending the first message)
-      let existingChat = await getChatById({ id: chatId });
-      if (!existingChat) {
-        await saveChat({
-          id: chatId,
+      let resourceId: string;
+      try {
+        resourceId = await ingest({
           userId: session.user.id,
-          title: filename,
-          visibility: "private",
+          collectionId: collectionId as string,
+          fileName: filename,
+          fileUrl: data.url,
+          fileType,
+          mimeType: file.type,
+          fileSize: file.size,
+          contentHash: createHash("sha256")
+            .update(Buffer.from(fileBuffer))
+            .digest("hex"),
+          buffer: fileBuffer,
         });
-        existingChat = await getChatById({ id: chatId });
+      } catch (error) {
+        await deleteDocumentBlob(data.url).catch((cleanupError) => {
+          console.error("[Upload Cleanup Error]", cleanupError);
+        });
+        throw error;
       }
-
-      if (existingChat?.userId !== session.user.id) {
-        return NextResponse.json(
-          { error: "Unauthorized to upload to this chat" },
-          { status: 403 }
-        );
-      }
-
-      // Ingest document (creates record immediately, processes in background)
-      const resourceId = await ingest({
-        chatId,
-        fileName: filename,
-        fileUrl: data.url,
-        fileType,
-        buffer: fileBuffer,
-      });
 
       return NextResponse.json({
-        ...data,
+        url: `/api/resources/${resourceId}/content`,
+        pathname: filename,
+        contentType: file.type,
         isDocument: true,
         resourceId,
-        status: "pending",
+        status: "queued",
       });
     }
 

@@ -8,7 +8,9 @@ import { DataStreamHandler } from "@/components/data-stream-handler";
 import { getCustomModelsForUser } from "@/lib/ai/custom-models";
 import {
   getChatById,
+  getDocumentsByChat,
   getMessagesByChatId,
+  getProjectById,
   getUserProfile,
 } from "@/lib/db/queries";
 import { convertToUIMessages } from "@/lib/utils";
@@ -69,6 +71,12 @@ async function ChatPage({ params }: { params: Promise<{ id: string }> }) {
   }
 
   const chatModel = chatModelFromCookie?.value || fallbackModel;
+  const [project, documents] = await Promise.all([
+    chat.projectId
+      ? getProjectById({ id: chat.projectId, userId: session.user.id })
+      : Promise.resolve(null),
+    getDocumentsByChat({ chatId: id, userId: session.user.id }),
+  ]);
 
   return (
     <>
@@ -78,6 +86,10 @@ async function ChatPage({ params }: { params: Promise<{ id: string }> }) {
         initialChatModel={chatModel}
         initialMessages={uiMessages}
         isReadonly={session?.user?.id !== chat.userId}
+        project={project ? { id: project.id, name: project.name } : null}
+        readyResourceCount={
+          documents.filter((document) => document.status === "ready").length
+        }
       />
       <DataStreamHandler />
     </>

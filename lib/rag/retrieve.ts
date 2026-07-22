@@ -1,7 +1,11 @@
 import type { RetrievalStrategy, RetrievedChunk } from "./types";
 
 export type DocumentRetrievalInput = {
-  chatId: string;
+  chatId?: string;
+  scope?: {
+    principalId: string;
+    collectionIds: string[];
+  };
   query: string;
   documentIds?: string[];
   limit?: number;
@@ -41,6 +45,16 @@ export function createDocumentRetriever({
 export async function retrieveDocumentChunks(
   input: DocumentRetrievalInput
 ): Promise<RetrievedChunk[]> {
+  let scope = input.scope;
+  if (!scope && input.chatId) {
+    const { getRetrievalScopeForChat } = await import("@/lib/db/queries");
+    scope =
+      (await getRetrievalScopeForChat({ chatId: input.chatId })) ?? undefined;
+  }
+  if (!scope || scope.collectionIds.length === 0) {
+    return [];
+  }
+
   const [{ embedText }, { hybridSearch }] = await Promise.all([
     import("./embed"),
     import("./hybrid-search"),
@@ -48,5 +62,5 @@ export async function retrieveDocumentChunks(
   return createDocumentRetriever({
     embed: embedText,
     search: hybridSearch,
-  })(input);
+  })({ ...input, scope });
 }

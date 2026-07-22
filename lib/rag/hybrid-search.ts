@@ -10,7 +10,10 @@ import type {
 } from "./types";
 
 type HybridSearchInput = {
-  chatId: string;
+  scope?: {
+    principalId: string;
+    collectionIds: string[];
+  };
   query: string;
   embedding?: number[];
   documentIds?: string[];
@@ -42,7 +45,7 @@ function rankLexicalResults(
 }
 
 export async function hybridSearch({
-  chatId,
+  scope,
   query,
   embedding,
   documentIds,
@@ -52,12 +55,15 @@ export async function hybridSearch({
   useRerank = true,
   strategy = "hybrid",
 }: HybridSearchInput): Promise<RetrievedChunk[]> {
+  if (!scope || scope.collectionIds.length === 0) {
+    return [];
+  }
   const searchVector = (): Promise<VectorSearchResult[]> => {
     if (embedding === undefined) {
       throw new Error(`An embedding is required for ${strategy} retrieval`);
     }
     return similaritySearch({
-      chatId,
+      scope,
       embedding,
       documentIds,
       limit: vectorLimit,
@@ -65,7 +71,7 @@ export async function hybridSearch({
   };
   const searchLexical = (): Promise<LexicalSearchResult[]> =>
     lexicalSearch({
-      chatId,
+      scope,
       query,
       documentIds,
       limit: lexicalLimit,

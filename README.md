@@ -18,6 +18,7 @@
 - **流式对话**: 实时流式聊天，支持 markdown 渲染和代码高亮
 - **Artifacts**: 在对话中生成并预览代码、文档、表格、图片等内容
 - **RAG 检索增强生成**: 支持文档上传解析（PDF/DOCX/XLSX/PPTX/TXT），pgvector 与 PostgreSQL lexical 检索经 RRF 融合，并可用阿里云百炼 Qwen3-Rerank 重排序
+- **项目知识库**: 一个项目可包含多个会话和共享文件库，项目会话自动检索项目资料，同时保留会话自己的附件
 - **网络搜索**: 集成 Tavily 搜索引擎，实时获取网络信息
 - **图片生成**: 支持 AI 图片生成（SiliconFlow FLUX）
 - **多模态输入**: 支持文本和文件混合输入
@@ -30,7 +31,8 @@
 需要配置以下环境变量（参考 [.env.example](.env.example)）：
 
 - `AUTH_SECRET` — 认证密钥，用于加密会话
-- `BLOB_READ_WRITE_TOKEN` — Vercel Blob 存储 Token
+- `BLOB_READ_WRITE_TOKEN` — 公开图片附件使用的 Vercel Blob 存储 Token
+- `PRIVATE_BLOB_READ_WRITE_TOKEN` — 项目知识文件使用的独立私有 Vercel Blob 存储 Token
 - `POSTGRES_URL` — PostgreSQL 数据库连接串
 - `ENCRYPTION_KEY` — API Key 加密密钥（AES-256-GCM）
 

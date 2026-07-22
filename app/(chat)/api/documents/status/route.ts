@@ -16,10 +16,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing resourceId" }, { status: 400 });
   }
 
-  const doc = await getDocumentResourceById({ id: resourceId });
+  const doc = await getDocumentResourceById({
+    id: resourceId,
+    userId: session.user.id,
+  });
   if (!doc) {
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ status: doc.status });
+  return NextResponse.json({
+    status: doc.status,
+    progress: doc.progress ?? 0,
+    errorMessage: doc.errorMessage,
+  });
 }

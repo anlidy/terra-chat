@@ -17,6 +17,7 @@ import { Artifact } from "./artifact";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
+import { PROJECTS_CACHE_KEY } from "./project-sidebar";
 import { getChatHistoryPaginationKey } from "./sidebar-history";
 import { toast } from "./toast";
 
@@ -26,12 +27,16 @@ export function Chat({
   initialChatModel,
   isReadonly,
   autoResume,
+  project,
+  readyResourceCount = 0,
 }: {
   id: string;
   initialMessages: ChatMessage[];
   initialChatModel: string;
   isReadonly: boolean;
   autoResume: boolean;
+  project?: { id: string; name: string } | null;
+  readyResourceCount?: number;
 }) {
   const router = useRouter();
 
@@ -115,6 +120,7 @@ export function Chat({
     },
     onFinish: () => {
       mutate(unstable_serialize(getChatHistoryPaginationKey));
+      mutate(PROJECTS_CACHE_KEY);
     },
     onError: (error) => {
       if (error instanceof ChatbotError) {
@@ -130,6 +136,7 @@ export function Chat({
       }
       // Force status reset on error to prevent stuck state
       mutate(unstable_serialize(getChatHistoryPaginationKey));
+      mutate(PROJECTS_CACHE_KEY);
     },
   });
 
@@ -168,7 +175,11 @@ export function Chat({
   return (
     <>
       <div className="overscroll-behavior-contain flex h-dvh min-w-0 touch-pan-y flex-col bg-background">
-        <ChatHeader isReadonly={isReadonly} />
+        <ChatHeader
+          isReadonly={isReadonly}
+          project={project}
+          readyResourceCount={readyResourceCount}
+        />
 
         <Messages
           addToolApprovalResponse={addToolApprovalResponse}

@@ -4,7 +4,7 @@
 >
 > **范围**：文档生命周期、摄取可靠性、检索质量、通用模块边界、评测与可观测性
 >
-> **最后核验**：2026-07-21
+> **最后核验**：2026-07-22
 
 ## 1. 背景与结论
 
@@ -20,16 +20,19 @@
 
 ```text
 上传文件
-  → Vercel Blob
-  → DocumentResource(pending, chatId)
+  → Vercel Blob（知识文件为独立私有 store）
+  → DocumentResource(queued, owner, hash, pipeline version)
+  → CollectionResource(chat/project collection)
+  → IngestionJob(queued)
   → Next.js after()
       → LlamaCloud Parse
       → MarkdownNodeParser
       → Zhipu embedding-3 / 1024 维
       → DocumentChunk + pgvector
-      → ready/error
+      → ready/failed
 
 用户查询
+  → owner-checked chat/project collection scope
   → retrieveDocumentChunks
       → vector + lexical
       → RRF
@@ -50,7 +53,7 @@
 | --- | --- | --- |
 | P0 | 上传即绑定 chat，移除附件不撤销资源 | 未发送或已移除的文档仍可能参与后续检索 |
 | P0 | `after()` 承担完整摄取任务 | 任务中断后可能长期 pending，无法自动恢复 |
-| P0 | 文档使用公开 Blob，状态接口未校验资源归属 | 不满足敏感文档和严格多租户场景 |
+| P0（已修正） | 历史实现使用公开 Blob，状态接口未校验资源归属 | 新知识文件已改用私有 store，资源接口和检索 scope 均校验 owner；迁移前公开文件通过鉴权代理兼容读取 |
 | P0 | 检索无相关性阈值 | 不可回答问题也会返回“最不差”的内容 |
 | P1 | Embedding 已批量化，但摄取任务仍不可恢复 | 单次连接风暴已消除，进程中断后仍需重新摄取 |
 | P1 | 字符数切块、无 overlap，超长单段不会继续拆分 | chunk 大小不稳定，跨边界证据容易丢失 |
@@ -234,12 +237,12 @@ Project scenarios case hash 为 `sha256:d1434a9c40ab37d11e717d1d7fe23a9deb9964ab
 
 - [ ] 上传创建 draft resource；发送消息后才绑定 collection/chat。
 - [ ] 移除 draft 时取消任务，并清理数据库、chunks 和 Blob。
-- [ ] Blob 改为私有访问或短期签名 URL；所有资源接口验证 owner/collection 权限。
-- [ ] 引入持久化 `IngestionJob`，状态细分为 queued/parsing/chunking/embedding/indexing/ready/failed/cancelled。
+- [x] Blob 改为私有访问或短期签名 URL；所有资源接口验证 owner/collection 权限。
+- [x] 引入持久化 `IngestionJob`，状态细分为 queued/parsing/chunking/embedding/indexing/ready/failed/cancelled。
 - [ ] 为任务增加 lease、attempt、超时、指数退避和可重试错误分类。
 - [ ] 使用内容 hash、pipeline version 和唯一约束保证幂等。
 - [x] Embedding 改为最多 64 条的批量请求和有限重试；记录文档、chunk 和批次进度。
-- [ ] chunks 在事务内替换，只有完整成功后才把 Resource 标记 ready。
+- [x] chunks 在事务内替换，只有完整成功后才把 Resource 标记 ready。
 - [ ] 增加摄取状态、取消、重试、删除和 chat 删除清理的集成测试。
 
 验收：重复执行同一任务不会产生重复 chunk；进程在任一阶段终止后可恢复；用户移除的文档不会出现在检索结果中；资源接口不能跨用户读取状态。
@@ -250,13 +253,38 @@ Project scenarios case hash 为 `sha256:d1434a9c40ab37d11e717d1d7fe23a9deb9964ab
 
 - [ ] 定义 `Parser`、`Chunker`、`Embedder`、`RetrievalStore`、`Reranker` 和 `JobQueue` ports。
 - [ ] 将当前 LlamaCloud、Zhipu、PostgreSQL、阿里云百炼 Qwen3-Rerank 实现迁移为 adapters。
-- [ ] 新建 collection/scope 查询边界和权限校验入口。
-- [ ] 保留 `retrieveDocumentChunks({ chatId, ... })` 兼容包装器，内部映射到新服务。
-- [ ] 将 AI SDK tools 和 proactive retrieval 继续路由到同一应用服务。
+- [x] 新建 collection/scope 查询边界和权限校验入口。
+- [x] 保留 `retrieveDocumentChunks({ chatId, ... })` 兼容包装器，内部映射到新服务。
+- [x] 将 AI SDK tools 和 proactive retrieval 继续路由到同一应用服务。
 - [ ] 用 contract tests 验证不同 adapter 的输入、输出、错误和 metadata 语义一致。
 - [ ] 在一个真实替代实现出现前，不为每个 port 增加复杂注册表或动态插件发现。
 
 验收：核心 domain/retrieval/ingestion 代码不读取 `process.env`，不导入 `next/server`，也不出现供应商 API URL；旧 chat 行为通过兼容层保持。
+
+#### 2026-07-22 项目知识库纵向切片
+
+本次变更以个人项目功能落地 collection/scope 边界，但不代表阶段 1 或阶段 2 已完成：
+
+- 新增 `Project`、`KnowledgeCollection`、`CollectionResource` 和 `IngestionJob`；项目与会话分别拥有 collection，项目会话检索项目与会话两个 scope。
+- 迁移先为历史会话创建 collection、回填资源 owner/binding/job，再移除 chunk/resource 的 `chatId`，保持旧会话文档可检索。
+- 项目文档使用独立私有 Vercel Blob store，通过 owner 校验的内容路由访问；公开图片附件继续使用原公开 store。
+- 摄取状态已细分并持久化，失败可人工重试，chunk 重试采用事务替换；lease claim、自动恢复 worker、退避调度和 cancelled 执行中任务中断仍未实现，继续保留在阶段 1。
+- 主动检索和 AI SDK tools 已改为 collection scope，并保留内部评测所需的 `chatId` 兼容包装器；ports/adapters 拆分仍属于阶段 2 后续工作。
+- 前端新增项目主页、共享文件库、项目嵌套会话和移动/删除语义。项目删除会永久清理项目资料并将会话移回独立历史。
+
+本纵向切片的验证证据：
+
+- `pnpm db:migrate`：迁移在当前 PostgreSQL 环境成功执行，历史会话 collection、资源 owner/binding/job 回填后再收紧非空约束并移除旧 `chatId`；
+- `pnpm db:check`：Drizzle schema、迁移与 metadata 一致性检查通过；
+- `pnpm lint`：279 个文件通过；
+- `pnpm exec tsc --noEmit`：通过；
+- `pnpm test:unit`：64 个测试通过，包含 chat/project collection scope 去重和检索 scope 透传契约；
+- `pnpm eval:rag:smoke`：3 个 fixture case 通过，Document Recall@5 与 Evidence Recall@5 均为 1.0000，false-retrieval rate 为 0；
+- `pnpm build`：迁移、Next.js 生产编译、类型检查和 26 个静态页面生成通过；新增 project/resource API 与 `/projects/[id]` 出现在构建路由表；
+- 本地鉴权 API smoke：使用临时 guest 会话完成项目创建（201）、项目会话创建（201）、项目读取（200，返回 1 条子会话）和项目删除（200）；随后精确删除被移回独立历史的测试会话及临时 guest 用户，未保留测试数据；
+- `pnpm exec playwright test tests/e2e/projects.test.ts --project=e2e`：已尝试，但当前 `ubuntu26.04-x64` 没有 Playwright Chromium 可执行文件，且 Playwright 安装器不支持该平台，因此未执行浏览器流程；测试用例已保留，需在受支持的 CI/开发机补跑。
+
+功能实现与可用自动化检查已完成；由于浏览器环境阻塞，OpenSpec 仍保留一项聚焦 Playwright/视觉回归验证，不将其误报为通过。阶段 1 的 draft 绑定、lease/worker/退避和阶段 2 的 ports/adapters 仍按原计划继续，不能因本纵向切片而标记整阶段完成。
 
 ### 5.4 阶段 3：优化检索与回答质量
 

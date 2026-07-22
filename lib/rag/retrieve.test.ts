@@ -63,3 +63,24 @@ test("document retriever rejects an empty query", async () => {
     /query must not be empty/i
   );
 });
+
+test("document retriever forwards project and chat collection scope", async () => {
+  const retrieve = createDocumentRetriever({
+    embed: () => Promise.resolve([0.1]),
+    search: (input) => {
+      assert.deepEqual(input.scope, {
+        principalId: "user-1",
+        collectionIds: ["chat-collection", "project-collection"],
+      });
+      return Promise.resolve([chunk]);
+    },
+  });
+
+  await retrieve({
+    scope: {
+      principalId: "user-1",
+      collectionIds: ["chat-collection", "project-collection"],
+    },
+    query: "policy",
+  });
+});

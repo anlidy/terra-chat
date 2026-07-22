@@ -40,14 +40,17 @@ import {
   deleteChatById,
   getChatById,
   getCustomProviderById,
+  getDocumentsByCollection,
   getMessageCountByUserId,
   getMessagesByChatId,
+  getRetrievalScopeForChat,
   saveChat,
   saveMessages,
   updateChatTitleById,
   updateMessage,
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
+import { deleteDocumentBlob } from "@/lib/document-blob";
 import { ChatbotError } from "@/lib/errors";
 import { retrieveDocumentChunks } from "@/lib/rag/retrieve";
 import { checkIpRateLimit } from "@/lib/ratelimit";
@@ -211,6 +214,16 @@ export async function POST(request: Request) {
       if (!isToolApprovalFlow) {
         messagesFromDb = await getMessagesByChatId({ id });
         messagesFromDb = filterOrphanedToolUses(messagesFromDb);
+        if (
+          chat.title === "New chat" &&
+          messagesFromDb.length === 0 &&
+          message?.role === "user"
+        ) {
+          titlePromise = generateTitleFromUserMessage({
+            message,
+            userId: session.user.id,
+          });
+        }
       }
     } else if (message?.role === "user") {
       await saveChat({
@@ -347,7 +360,7 @@ export async function POST(request: Request) {
           }
         }
 
-        const docsStatus = await getDocsStatus(id);
+        const docsStatus = await getDocsStatus(id, session.user.id);
 
         // Build static system prompt (built once, reused)
         const staticSystemPrompt = promptBuilder.build({ requestHints });
@@ -386,8 +399,12 @@ export async function POST(request: Request) {
             queryText.length > 10 && !isVagueQuery(queryText);
 
           if (queryText && isSpecificQuery) {
-            const chunks = await retrieveDocumentChunks({
+            const retrievalScope = await getRetrievalScopeForChat({
               chatId: id,
+              userId: session.user.id,
+            });
+            const chunks = await retrieveDocumentChunks({
+              scope: retrievalScope ?? undefined,
               query: queryText,
               limit: 5,
               useRerank: true,
@@ -453,8 +470,14 @@ export async function POST(request: Request) {
             createDocument: createDocument({ session, dataStream }),
             updateDocument: updateDocument({ session, dataStream }),
             requestSuggestions: requestSuggestions({ session, dataStream }),
-            retrieveDocuments: retrieveDocuments({ chatId: id }),
-            getDocumentsStatus: getDocumentsStatus({ chatId: id }),
+            retrieveDocuments: retrieveDocuments({
+              chatId: id,
+              userId: session.user.id,
+            }),
+            getDocumentsStatus: getDocumentsStatus({
+              chatId: id,
+              userId: session.user.id,
+            }),
             generateImage,
           },
           experimental_telemetry: {
@@ -569,7 +592,14 @@ export async function DELETE(request: Request) {
     return new ChatbotError("forbidden:chat").toResponse();
   }
 
+  const resources = await getDocumentsByCollection({
+    collectionId: chat.collectionId,
+    userId: session.user.id,
+  });
   const deletedChat = await deleteChatById({ id });
+  await Promise.allSettled(
+    resources.map((resource) => deleteDocumentBlob(resource.fileUrl))
+  );
 
   return Response.json(deletedChat, { status: 200 });
 }

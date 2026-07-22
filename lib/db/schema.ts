@@ -23,6 +23,42 @@ export const user = pgTable("User", {
 
 export type User = InferSelectModel<typeof user>;
 
+export const knowledgeCollection = pgTable("KnowledgeCollection", {
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  userId: uuid("userId")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { enum: ["chat", "project"] }).notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+});
+
+export type KnowledgeCollection = InferSelectModel<typeof knowledgeCollection>;
+
+export const project = pgTable(
+  "Project",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    collectionId: uuid("collectionId")
+      .notNull()
+      .unique()
+      .references(() => knowledgeCollection.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 120 }).notNull(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    userUpdatedIdx: index("project_user_updated_idx").on(
+      table.userId,
+      table.updatedAt
+    ),
+  })
+);
+
+export type Project = InferSelectModel<typeof project>;
+
 export const chat = pgTable("Chat", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   createdAt: timestamp("createdAt").notNull(),
@@ -30,6 +66,13 @@ export const chat = pgTable("Chat", {
   userId: uuid("userId")
     .notNull()
     .references(() => user.id),
+  projectId: uuid("projectId").references(() => project.id, {
+    onDelete: "set null",
+  }),
+  collectionId: uuid("collectionId")
+    .notNull()
+    .unique()
+    .references(() => knowledgeCollection.id, { onDelete: "cascade" }),
   visibility: varchar("visibility", { enum: ["public", "private"] })
     .notNull()
     .default("private"),
@@ -220,21 +263,108 @@ export const customModel = pgTable("CustomModel", {
 
 export type CustomModel = InferSelectModel<typeof customModel>;
 
-export const documentResource = pgTable("DocumentResource", {
-  id: uuid("id").primaryKey().notNull().defaultRandom(),
-  chatId: uuid("chatId")
-    .notNull()
-    .references(() => chat.id, { onDelete: "cascade" }),
-  fileName: text("fileName").notNull(),
-  fileUrl: text("fileUrl").notNull(),
-  fileType: varchar("fileType", { length: 20 }).notNull(),
-  status: varchar("status", { enum: ["pending", "ready", "error"] })
-    .notNull()
-    .default("pending"),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
-});
+export const documentResource = pgTable(
+  "DocumentResource",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    fileName: text("fileName").notNull(),
+    fileUrl: text("fileUrl").notNull(),
+    fileType: varchar("fileType", { length: 20 }).notNull(),
+    mimeType: text("mimeType").notNull(),
+    fileSize: integer("fileSize").notNull(),
+    contentHash: varchar("contentHash", { length: 64 }).notNull(),
+    pipelineVersion: varchar("pipelineVersion", { length: 100 }).notNull(),
+    status: varchar("status", {
+      enum: [
+        "draft",
+        "queued",
+        "parsing",
+        "chunking",
+        "embedding",
+        "indexing",
+        "ready",
+        "failed",
+        "cancelled",
+      ],
+    })
+      .notNull()
+      .default("draft"),
+    errorMessage: text("errorMessage"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    ownerHashIdx: index("resource_owner_hash_idx").on(
+      table.userId,
+      table.contentHash
+    ),
+  })
+);
 
 export type DocumentResource = InferSelectModel<typeof documentResource>;
+
+export const collectionResource = pgTable(
+  "CollectionResource",
+  {
+    collectionId: uuid("collectionId")
+      .notNull()
+      .references(() => knowledgeCollection.id, { onDelete: "cascade" }),
+    resourceId: uuid("resourceId")
+      .notNull()
+      .references(() => documentResource.id, { onDelete: "cascade" }),
+    isEnabled: boolean("isEnabled").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.collectionId, table.resourceId] }),
+    resourceIdx: index("collection_resource_resource_idx").on(table.resourceId),
+  })
+);
+
+export type CollectionResource = InferSelectModel<typeof collectionResource>;
+
+export const ingestionJob = pgTable(
+  "IngestionJob",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    resourceId: uuid("resourceId")
+      .notNull()
+      .references(() => documentResource.id, { onDelete: "cascade" }),
+    status: varchar("status", {
+      enum: [
+        "queued",
+        "parsing",
+        "chunking",
+        "embedding",
+        "indexing",
+        "ready",
+        "failed",
+        "cancelled",
+      ],
+    })
+      .notNull()
+      .default("queued"),
+    attempt: integer("attempt").notNull().default(0),
+    progress: integer("progress").notNull().default(0),
+    leaseExpiresAt: timestamp("leaseExpiresAt"),
+    nextAttemptAt: timestamp("nextAttemptAt"),
+    errorMessage: text("errorMessage"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    resourceIdx: index("ingestion_job_resource_idx").on(table.resourceId),
+    statusAttemptIdx: index("ingestion_job_status_attempt_idx").on(
+      table.status,
+      table.nextAttemptAt
+    ),
+  })
+);
+
+export type IngestionJob = InferSelectModel<typeof ingestionJob>;
 
 export const documentChunk = pgTable(
   "DocumentChunk",
@@ -243,7 +373,6 @@ export const documentChunk = pgTable(
     resourceId: uuid("resourceId")
       .notNull()
       .references(() => documentResource.id, { onDelete: "cascade" }),
-    chatId: uuid("chatId").notNull(),
     content: text("content").notNull(),
     embedding: vector("embedding", { dimensions: 1024 }),
     chunkIndex: integer("chunkIndex").notNull(),

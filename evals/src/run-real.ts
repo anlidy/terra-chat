@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -232,6 +232,10 @@ type CorpusFile = {
   filePath: string;
   fileType: string;
 };
+
+function corpusMimeType(fileType: string) {
+  return fileType === "pdf" ? "application/pdf" : "text/plain";
+}
 
 type DatasetPlan = {
   cases: RagEvalCase[];
@@ -506,6 +510,12 @@ export async function runRealEvaluation(
         title: `RAG evaluation ${config.profile} ${new Date().toISOString()}`,
         visibility: "private",
       });
+      const evaluationChat = await queries.getChatById({
+        id: evaluationChatId,
+      });
+      if (!evaluationChat) {
+        throw new Error("Failed to load the temporary evaluation chat");
+      }
 
       for (const [index, file] of selectedDocuments.entries()) {
         phase = `document ingestion ${index + 1}/${selectedDocuments.length} (${file.fileName})`;
@@ -513,19 +523,24 @@ export async function runRealEvaluation(
         console.log(
           `[eval:rag] Ingesting ${index + 1}/${selectedDocuments.length}: ${file.fileName}`
         );
-        const resource = await queries.insertDocumentResource({
-          chatId: evaluationChatId,
+        const fileBuffer = await readFile(file.filePath);
+        const { resource } = await queries.insertDocumentResource({
+          userId,
+          collectionId: evaluationChat.collectionId,
           fileName: file.fileName,
           fileUrl: expectedFileUrls.get(file.fileName) as string,
           fileType: file.fileType,
+          mimeType: corpusMimeType(file.fileType),
+          fileSize: fileBuffer.byteLength,
+          contentHash: createHash("sha256").update(fileBuffer).digest("hex"),
+          pipelineVersion: RAG_PIPELINE_VERSION,
         });
         resourceIds.set(file.fileName, resource.id);
         await processDocumentResource({
           resourceId: resource.id,
-          chatId: evaluationChatId,
           fileName: file.fileName,
           fileType: file.fileType,
-          buffer: arrayBuffer(await readFile(file.filePath)),
+          buffer: arrayBuffer(fileBuffer),
         });
         console.log(
           `[eval:rag] Ingested ${index + 1}/${selectedDocuments.length}: ${file.fileName} in ${Date.now() - documentStartedAt}ms`

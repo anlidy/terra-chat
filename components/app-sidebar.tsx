@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
 import { PlusIcon, SidebarLeftIcon } from "@/components/icons";
+import { ProjectSidebar } from "@/components/project-sidebar";
 import { SidebarHistory } from "@/components/sidebar-history";
 import { SidebarUserNav } from "@/components/sidebar-user-nav";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,7 @@ export function AppSidebar({ user }: { user: User | undefined }) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent className="px-2 group-data-[collapsible=icon]:hidden">
+        <ProjectSidebar user={user} />
         <SidebarHistory user={user} />
       </SidebarContent>
       <SidebarFooter className="mt-auto px-3 pb-3 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">

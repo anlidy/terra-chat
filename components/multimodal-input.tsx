@@ -165,14 +165,22 @@ function PureMultimodalInput({
       for (const { id, status } of results) {
         if (status === "ready") {
           // nothing — just remove from pending
-        } else if (status === "error") {
+        } else if (status === "failed" || status === "cancelled") {
           toast.error("Document processing failed. Please try again.");
           setAttachments((curr) => curr.filter((a) => a.resourceId !== id));
+          const deleteResponse = await fetch(`/api/resources/${id}`, {
+            method: "DELETE",
+          }).catch(() => null);
+          if (!deleteResponse?.ok) {
+            toast.error("The failed document could not be cleaned up.");
+          }
         } else {
           stillPending.push(id);
         }
       }
-      setPendingDocIds(stillPending);
+      setPendingDocIds((current) =>
+        current.filter((id) => stillPending.includes(id))
+      );
     }, 2000);
 
     return () => clearInterval(interval);
@@ -472,6 +480,24 @@ function PureMultimodalInput({
                   setAttachments((currentAttachments) =>
                     currentAttachments.filter((a) => a.url !== attachment.url)
                   );
+                  if (attachment.resourceId) {
+                    setPendingDocIds((current) =>
+                      current.filter((id) => id !== attachment.resourceId)
+                    );
+                    fetch(`/api/resources/${attachment.resourceId}`, {
+                      method: "DELETE",
+                    })
+                      .then((response) => {
+                        if (!response.ok) {
+                          throw new Error("Document cleanup failed");
+                        }
+                      })
+                      .catch(() => {
+                        toast.error(
+                          "The attachment was removed, but its stored file could not be deleted."
+                        );
+                      });
+                  }
                   if (fileInputRef.current) {
                     fileInputRef.current.value = "";
                   }

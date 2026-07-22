@@ -1,11 +1,17 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { getDocumentsByChat } from "@/lib/db/queries";
+import { getDocumentsByChat, getRetrievalScopeForChat } from "@/lib/db/queries";
 import { retrieveDocumentChunks } from "@/lib/rag/retrieve";
 
-export const retrieveDocuments = ({ chatId }: { chatId: string }) =>
+export const retrieveDocuments = ({
+  chatId,
+  userId,
+}: {
+  chatId: string;
+  userId: string;
+}) =>
   tool({
-    description: `Retrieve relevant content from documents uploaded in this conversation.
+    description: `Retrieve relevant content from documents available to this conversation. Project chats can search both project knowledge and chat-specific attachments.
 
 Use cases:
 1. User asks about specific information in the documents
@@ -43,11 +49,11 @@ Examples:
     }),
     execute: async ({ query, documentIds }) => {
       // Check if documents exist
-      const docs = await getDocumentsByChat({ chatId });
+      const docs = await getDocumentsByChat({ chatId, userId });
       if (docs.length === 0) {
         return {
           message:
-            "No documents are available in this conversation. Please upload documents first using the file upload button.",
+            "No knowledge files or chat documents are available. Add files to the project knowledge library or this chat first.",
           chunks: [],
         };
       }
@@ -74,8 +80,12 @@ Examples:
         };
       }
 
+      const scope = await getRetrievalScopeForChat({ chatId, userId });
+      if (!scope) {
+        return { message: "Conversation not found.", chunks: [] };
+      }
       const chunks = await retrieveDocumentChunks({
-        chatId,
+        scope,
         query,
         documentIds: readyDocs.map((d) => d.id),
       });

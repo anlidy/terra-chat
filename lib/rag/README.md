@@ -4,7 +4,7 @@
 >
 > **范围**：`lib/rag/` 的检索、融合与重排序
 >
-> **最后核验**：2026-07-21
+> **最后核验**：2026-07-22
 
 ## 检索流水线
 
@@ -45,13 +45,21 @@ lexical/full-text ranking，**不是 BM25**。
 import { retrieveDocumentChunks } from "@/lib/rag/retrieve";
 
 const chunks = await retrieveDocumentChunks({
-  chatId: "chat-uuid",
+  scope: {
+    principalId: "user-uuid",
+    collectionIds: ["chat-collection-uuid", "project-collection-uuid"],
+  },
   query: "PostgreSQL JSONB 索引",
   limit: 5,
   strategy: "hybrid",
   useRerank: true,
 });
 ```
+
+应用层通过 `getRetrievalScopeForChat` 将会话映射到 collection。独立会话只包含自己的
+chat collection；项目会话同时包含 chat collection 和 project collection。检索查询还会
+校验 `principalId`，不能仅凭 collection ID 跨用户读取资料。`chatId` 输入只保留给内部
+评测兼容路径，新路由和 AI tools 必须显式传入 owner-checked scope。
 
 策略语义：
 

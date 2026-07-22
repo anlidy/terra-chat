@@ -1,6 +1,9 @@
+import { FolderInput } from "lucide-react";
 import Link from "next/link";
 import { memo, useState } from "react";
-import type { Chat } from "@/lib/db/schema";
+import useSWR from "swr";
+import type { Chat, Project } from "@/lib/db/schema";
+import { fetcher } from "@/lib/utils";
 import { MoreHorizontalIcon, PencilEditIcon, TrashIcon } from "./icons";
 import { toast } from "./toast";
 import { Button } from "./ui/button";
@@ -39,6 +42,12 @@ const PureChatItem = ({
   const [showRenameDialog, setShowRenameDialog] = useState(false);
   const [newTitle, setNewTitle] = useState(chat.title);
   const [isRenaming, setIsRenaming] = useState(false);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
+  const { data: projectsData } = useSWR<{ projects: Project[] }>(
+    showMoveDialog ? "/api/projects" : null,
+    fetcher
+  );
 
   const handleRename = async () => {
     if (!newTitle.trim() || newTitle === chat.title) {
@@ -82,6 +91,32 @@ const PureChatItem = ({
     }
   };
 
+  const moveChat = async (projectId: string | null) => {
+    setIsMoving(true);
+    try {
+      const response = await fetch(`/api/chats/${chat.id}/project`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to move chat");
+      }
+      toast({
+        type: "success",
+        description: projectId
+          ? "Chat moved to project"
+          : "Chat moved to independent chats",
+      });
+      setShowMoveDialog(false);
+      window.location.reload();
+    } catch (_error) {
+      toast({ type: "error", description: "Failed to move chat" });
+    } finally {
+      setIsMoving(false);
+    }
+  };
+
   return (
     <>
       <SidebarMenuItem>
@@ -112,6 +147,13 @@ const PureChatItem = ({
             >
               <PencilEditIcon />
               <span>Rename</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => setShowMoveDialog(true)}
+            >
+              <FolderInput />
+              <span>Move to project</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               className="cursor-pointer text-destructive focus:bg-destructive/15 focus:text-destructive dark:text-red-500"
@@ -152,6 +194,53 @@ const PureChatItem = ({
             </Button>
             <Button disabled={isRenaming} onClick={handleRename}>
               {isRenaming ? "Renaming..." : "Rename"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog onOpenChange={setShowMoveDialog} open={showMoveDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move chat</DialogTitle>
+            <DialogDescription>
+              Project chats can search that project's knowledge files. This
+              chat's existing attachments stay with the chat.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 space-y-1 overflow-y-auto">
+            {chat.projectId && (
+              <Button
+                className="min-h-11 w-full justify-start"
+                disabled={isMoving}
+                onClick={() => moveChat(null)}
+                variant="ghost"
+              >
+                Independent chats
+              </Button>
+            )}
+            {projectsData?.projects
+              .filter((project) => project.id !== chat.projectId)
+              .map((project) => (
+                <Button
+                  className="min-h-11 w-full justify-start"
+                  disabled={isMoving}
+                  key={project.id}
+                  onClick={() => moveChat(project.id)}
+                  variant="ghost"
+                >
+                  {project.name}
+                </Button>
+              ))}
+            {projectsData?.projects.length === 0 && (
+              <p className="py-6 text-center text-muted-foreground text-sm">
+                Create a project before moving this chat.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowMoveDialog(false)} variant="outline">
+              Keep chat here
             </Button>
           </DialogFooter>
         </DialogContent>

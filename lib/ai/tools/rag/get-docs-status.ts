@@ -15,6 +15,8 @@ function normalizeDocumentStatus(dbStatus: string): DocumentStatus {
     case "ready":
       return "ready";
     case "error":
+    case "failed":
+    case "cancelled":
       return "failed";
     default:
       return "processing";
@@ -30,8 +32,11 @@ function normalizeDocumentStatus(dbStatus: string): DocumentStatus {
  * @param chatId - The chat session ID
  * @returns DocsStatusResult with document details and status counts
  */
-export async function getDocsStatus(chatId: string): Promise<DocsStatusResult> {
-  const documents = await getDocumentsByChat({ chatId });
+export async function getDocsStatus(
+  chatId: string,
+  userId?: string
+): Promise<DocsStatusResult> {
+  const documents = await getDocumentsByChat({ chatId, userId });
 
   if (documents.length === 0) {
     return {
@@ -75,9 +80,15 @@ export async function getDocsStatus(chatId: string): Promise<DocsStatusResult> {
  * Allows the model to query the status of uploaded documents in the current conversation.
  * Returns document IDs and filenames that can be used with retrieveDocuments tool.
  */
-export const getDocumentsStatus = ({ chatId }: { chatId: string }) =>
+export const getDocumentsStatus = ({
+  chatId,
+  userId,
+}: {
+  chatId: string;
+  userId: string;
+}) =>
   tool({
-    description: `Get the status of all documents uploaded in this conversation.
+    description: `Get the status of documents available to this conversation, including project knowledge and chat attachments.
 
 Use this tool when:
 - User asks about what documents are available
@@ -90,11 +101,11 @@ Returns:
 - Document IDs can be used with the retrieveDocuments tool to search specific documents`,
     inputSchema: z.object({}),
     execute: async () => {
-      const status = await getDocsStatus(chatId);
+      const status = await getDocsStatus(chatId, userId);
 
       if (!status.hasDocuments) {
         return {
-          message: "No documents have been uploaded to this conversation yet.",
+          message: "No knowledge files or chat documents are available yet.",
           documents: [],
         };
       }

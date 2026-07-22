@@ -21,6 +21,7 @@ import {
 import {
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -164,6 +165,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   if (!user) {
     return (
       <SidebarGroup>
+        <SidebarGroupLabel>Chats</SidebarGroupLabel>
         <SidebarGroupContent>
           <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-sidebar-foreground/50">
             Login to save and revisit previous chats!
@@ -176,6 +178,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   if (isLoading) {
     return (
       <SidebarGroup>
+        <SidebarGroupLabel>Chats</SidebarGroupLabel>
         <div className="px-2 py-1 text-sidebar-foreground/50 text-xs">
           Today
         </div>
@@ -205,6 +208,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   if (hasEmptyChatHistory) {
     return (
       <SidebarGroup>
+        <SidebarGroupLabel>Chats</SidebarGroupLabel>
         <SidebarGroupContent>
           <div className="flex w-full flex-row items-center justify-center gap-2 px-2 text-sm text-sidebar-foreground/50">
             Your conversations will appear here once you start chatting!
@@ -217,6 +221,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   return (
     <>
       <SidebarGroup>
+        <SidebarGroupLabel>Chats</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             {paginatedChatHistories &&
