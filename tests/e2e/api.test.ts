@@ -27,7 +27,46 @@ test.describe("Chat API Integration", () => {
     await expect(page).toHaveURL(CHAT_URL_REGEX, { timeout: 10_000 });
   });
 
-  test("shows stop button during generation", async ({ chatPage }) => {
+  test("shows stop button during generation", async ({ chatPage, page }) => {
+    await page.evaluate(() => {
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+
+        if (!url.endsWith("/api/chat")) {
+          return originalFetch(input, init);
+        }
+
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: "start",
+                  messageId: "assistant-message",
+                })}\n\n`
+              )
+            );
+          },
+        });
+
+        return Promise.resolve(
+          new Response(stream, {
+            headers: {
+              "content-type": "text/event-stream",
+              "x-vercel-ai-ui-message-stream": "v1",
+            },
+          })
+        );
+      };
+    });
+
     await chatPage.sendUserMessage("Tell me a long story");
     await expect(chatPage.getStopButton()).toBeVisible({ timeout: 5000 });
   });
