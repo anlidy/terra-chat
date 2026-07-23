@@ -80,9 +80,10 @@ pnpm db:studio    # 打开 Drizzle Studio
 
 ## Playwright 浏览器测试
 
-现在可以使用 Playwright 运行端到端测试。首次在本机运行前安装 Chromium 和系统依赖：
+仓库包含可运行的 Playwright 端到端用例，但能否直接在本机执行取决于操作系统支持和浏览器动态库。Playwright 1.51 **不支持 Ubuntu 26.04**；在该系统上运行下面的标准安装命令会失败，不要把 fallback 提示当成安装成功：
 
 ```bash
+# 仅适用于 Playwright 1.51 支持的 Linux 版本；Ubuntu 26.04 不可用
 pnpm exec playwright install --with-deps chromium
 ```
 
@@ -101,18 +102,40 @@ pnpm exec playwright show-report
 
 Artifact 浏览器用例会在浏览器内 mock timed `ReadableStream` 和文档 API，覆盖 text、code、sheet、image 的流式预览、完成态编辑器、关闭响应、空文档保存失败和错误恢复。`pnpm test:artifacts` 是 Markdown parser 与 stream reducer 的快速单元测试，不会启动浏览器。
 
-当前 Ubuntu 26.04 尚不在 Playwright 1.51 的原生平台列表中，可使用 Ubuntu 24.04 Chromium fallback；系统动态库仍应通过 `install --with-deps`、容器镜像或 CI 环境提供：
+### Ubuntu 26.04
+
+仓库当前锁定的 Playwright 1.51 安装器不支持 Ubuntu 26.04，因此不要运行 `install --with-deps`。在 WSL2 Ubuntu 26.04 上，若 Chromium 启动时报缺少 `libnss3.so`、`libnssutil3.so` 或 `libnspr4.so`，安装以下两个系统包即可：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libnss3 libnspr4
+```
+
+如果 `~/.cache/ms-playwright` 中还没有 Chromium，再用 Ubuntu 24.04 fallback 下载浏览器；已有浏览器缓存时跳过此步：
 
 ```bash
 PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 \
-  pnpm exec playwright install --with-deps chromium
+  pnpm exec playwright install chromium
+```
 
-PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 \
-  pnpm exec playwright test tests/e2e/artifacts.test.ts \
+安装完成后直接运行测试，不需要继续设置 fallback：
+
+```bash
+pnpm test
+
+# 只运行项目知识库流程
+PLAYWRIGHT=True pnpm exec playwright test tests/e2e/projects.test.ts \
   --project=e2e --workers=1
 ```
 
-GitHub Actions 已使用 `pnpm exec playwright install --with-deps chromium` 安装浏览器，并在 push 或 pull request 时运行 `pnpm test`。
+如果浏览器仍无法启动，用以下命令检查其他缺失的动态库：
+
+```bash
+find ~/.cache/ms-playwright -path "*/chrome-linux/headless_shell" -type f \
+  -exec ldd {} \; | grep "not found"
+```
+
+上述两包安装完成后，项目知识库聚焦用例已在 WSL2 Ubuntu 26.04 上通过。GitHub Actions 工作流仍会在受支持的 runner 上安装 Chromium 并运行 `pnpm test`。
 
 ## 项目结构
 
