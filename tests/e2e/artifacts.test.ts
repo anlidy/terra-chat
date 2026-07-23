@@ -170,9 +170,9 @@ async function mockPersistedDocument(
 
 async function startGeneration(page: Page) {
   await page.goto("/");
-  const input = page.getByTestId("multimodal-input");
+  const input = page.getByTestId("multimodal-input").first();
   await input.fill("Create a long artifact");
-  await page.getByTestId("send-button").click();
+  await page.getByTestId("send-button").first().click();
 }
 
 test.describe("Artifact reliability", () => {
