@@ -120,7 +120,7 @@ function PureMultimodalInput({
       const domValue = textareaRef.current.value;
       // Prefer DOM value over localStorage to handle hydration
       const finalValue = domValue || localStorageInput || "";
-      setInput(finalValue);
+      setInput((currentInput) => currentInput || finalValue);
       adjustHeight();
     }
     // Only run once after hydration
