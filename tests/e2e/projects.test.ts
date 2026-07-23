@@ -24,7 +24,14 @@ test.describe("Projects", () => {
 
     await page.getByRole("button", { name: "Create first chat" }).click();
     await expect(page).toHaveURL(/\/chat\/[\w-]+/);
-    await expect(page.getByText(projectName)).toBeVisible();
-    await expect(page.getByText("0 searchable files")).toBeVisible();
+    await expect(
+      page.locator("main").getByRole("link", { name: projectName })
+    ).toBeVisible();
+    await expect(
+      page
+        .locator("main")
+        .getByRole("link", { name: projectName })
+        .getByText("0 searchable files")
+    ).toBeVisible();
   });
 });
