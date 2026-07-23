@@ -1,4 +1,5 @@
 import cn from "classnames";
+import type { UIArtifact } from "./artifact";
 import { LoaderIcon } from "./icons";
 
 type ImageEditorProps = {
@@ -6,7 +7,7 @@ type ImageEditorProps = {
   content: string;
   isCurrentVersion: boolean;
   currentVersionIndex: number;
-  status: string;
+  status: UIArtifact["status"];
   isInline: boolean;
 };
 
@@ -22,17 +23,9 @@ export function ImageEditor({
         "h-[calc(100dvh-60px)]": !isInline,
         "h-[200px]": isInline,
       })}
+      data-testid={status === "idle" ? undefined : "artifact-streaming-preview"}
     >
-      {status === "streaming" ? (
-        <div className="flex flex-row items-center gap-4">
-          {!isInline && (
-            <div className="animate-spin">
-              <LoaderIcon />
-            </div>
-          )}
-          <div>Generating Image...</div>
-        </div>
-      ) : (
+      {content ? (
         <picture>
           <img
             alt={title}
@@ -42,6 +35,17 @@ export function ImageEditor({
             src={`data:image/png;base64,${content}`}
           />
         </picture>
+      ) : status === "streaming" ? (
+        <div className="flex flex-row items-center gap-4">
+          {!isInline && (
+            <div className="animate-spin">
+              <LoaderIcon />
+            </div>
+          )}
+          <div>Generating Image...</div>
+        </div>
+      ) : (
+        <div className="text-destructive">Image generation interrupted</div>
       )}
     </div>
   );

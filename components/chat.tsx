@@ -2,8 +2,15 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { ChatHeader } from "@/components/chat-header";
@@ -13,13 +20,22 @@ import type { Vote } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
-import { Artifact } from "./artifact";
 import { useDataStream } from "./data-stream-provider";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 import { PROJECTS_CACHE_KEY } from "./project-sidebar";
 import { getChatHistoryPaginationKey } from "./sidebar-history";
 import { toast } from "./toast";
+
+const Artifact = dynamic(
+  () => import("./artifact").then((module) => module.Artifact),
+  { ssr: false }
+);
+
+function ArtifactContainer(props: ComponentProps<typeof Artifact>) {
+  const isVisible = useArtifactSelector((state) => state.isVisible);
+  return isVisible ? <Artifact {...props} /> : null;
+}
 
 export function Chat({
   id,
@@ -52,7 +68,7 @@ export function Chat({
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [router]);
-  const { setDataStream } = useDataStream();
+  const { appendDataPart, failDataStream, flushDataParts } = useDataStream();
 
   const [input, setInput] = useState<string>("");
   const [currentModelId, setCurrentModelId] = useState(initialChatModel);
@@ -116,13 +132,15 @@ export function Chat({
       },
     }),
     onData: (dataPart) => {
-      setDataStream((ds) => (ds ? [...ds, dataPart] : []));
+      appendDataPart(dataPart);
     },
     onFinish: () => {
+      flushDataParts();
       mutate(unstable_serialize(getChatHistoryPaginationKey));
       mutate(PROJECTS_CACHE_KEY);
     },
     onError: (error) => {
+      failDataStream(error.message || "Artifact generation failed.");
       if (error instanceof ChatbotError) {
         toast({
           type: "error",
@@ -139,6 +157,11 @@ export function Chat({
       mutate(PROJECTS_CACHE_KEY);
     },
   });
+
+  const handleStop = useCallback(() => {
+    failDataStream("Generation stopped. Partial content was preserved.");
+    return stop();
+  }, [failDataStream, stop]);
 
   const searchParams = useSearchParams();
   const query = searchParams.get("query");
@@ -163,8 +186,6 @@ export function Chat({
   );
 
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const isArtifactVisible = useArtifactSelector((state) => state.isVisible);
-
   useAutoResume({
     autoResume,
     initialMessages,
@@ -184,7 +205,6 @@ export function Chat({
         <Messages
           addToolApprovalResponse={addToolApprovalResponse}
           chatId={id}
-          isArtifactVisible={isArtifactVisible}
           isReadonly={isReadonly}
           messages={messages}
           regenerate={regenerate}
@@ -208,13 +228,13 @@ export function Chat({
               setInput={setInput}
               setMessages={setMessages}
               status={status}
-              stop={stop}
+              stop={handleStop}
             />
           )}
         </div>
       </div>
 
-      <Artifact
+      <ArtifactContainer
         addToolApprovalResponse={addToolApprovalResponse}
         attachments={attachments}
         chatId={id}
@@ -228,7 +248,7 @@ export function Chat({
         setInput={setInput}
         setMessages={setMessages}
         status={status}
-        stop={stop}
+        stop={handleStop}
         votes={votes}
       />
     </>

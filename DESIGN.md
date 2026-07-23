@@ -29,3 +29,4 @@ Use the Tailwind 4-point spacing scale. Related rows use 4–12px gaps; sections
 - Product transitions run for 150–250ms, convey state, and respect reduced motion.
 - Mobile and coarse-pointer actions provide at least 44×44px hit areas.
 - Empty states explain value and offer one clear next action. Errors state what failed and how to recover.
+- Artifact generation uses a lightweight read-only live preview. Load the type-specific editor only after generation finishes; on failure, preserve partial content and provide explicit retry and close actions.

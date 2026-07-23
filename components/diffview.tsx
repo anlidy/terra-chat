@@ -1,6 +1,5 @@
 import OrderedMap from "orderedmap";
 import {
-  DOMParser,
   type MarkSpec,
   type Node as ProsemirrorNode,
   Schema,
@@ -10,10 +9,9 @@ import { addListNodes } from "prosemirror-schema-list";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { useEffect, useRef } from "react";
-import { renderToString } from "react-dom/server";
-import { Streamdown } from "streamdown";
 
 import { DiffType, diffEditor } from "@/lib/editor/diff";
+import { parseMarkdownToDocument } from "@/lib/editor/markdown";
 
 const diffSchema = new Schema({
   nodes: addListNodes(schema.spec.nodes, "paragraph block*", "block"),
@@ -57,23 +55,8 @@ export const DiffView = ({ oldContent, newContent }: DiffEditorProps) => {
 
   useEffect(() => {
     if (editorRef.current && !viewRef.current) {
-      const parser = DOMParser.fromSchema(diffSchema);
-
-      const oldHtmlContent = renderToString(
-        <Streamdown>{oldContent}</Streamdown>
-      );
-      const newHtmlContent = renderToString(
-        <Streamdown>{newContent}</Streamdown>
-      );
-
-      const oldContainer = document.createElement("div");
-      oldContainer.innerHTML = oldHtmlContent;
-
-      const newContainer = document.createElement("div");
-      newContainer.innerHTML = newHtmlContent;
-
-      const oldDoc = parser.parse(oldContainer);
-      const newDoc = parser.parse(newContainer);
+      const oldDoc = parseMarkdownToDocument(oldContent, diffSchema);
+      const newDoc = parseMarkdownToDocument(newContent, diffSchema);
 
       const diffedDoc = computeDiff(oldDoc, newDoc);
 

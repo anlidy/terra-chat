@@ -1,8 +1,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
-import type { DataUIPart } from "ai";
 import type { ComponentType, Dispatch, ReactNode, SetStateAction } from "react";
 import type { Suggestion } from "@/lib/db/schema";
-import type { ChatMessage, CustomUIDataTypes } from "@/lib/types";
+import type { ChatMessage } from "@/lib/types";
 import type { UIArtifact } from "./artifact";
 
 export type ArtifactActionContext<M = any> = {
@@ -39,7 +38,7 @@ type ArtifactContent<M = any> = {
   mode: "edit" | "diff";
   isCurrentVersion: boolean;
   currentVersionIndex: number;
-  status: "streaming" | "idle";
+  status: UIArtifact["status"];
   suggestions: Suggestion[];
   onSaveContent: (updatedContent: string, debounce: boolean) => void;
   isInline: boolean;
@@ -61,11 +60,6 @@ type ArtifactConfig<T extends string, M = any> = {
   actions: ArtifactAction<M>[];
   toolbar: ArtifactToolbarItem[];
   initialize?: (parameters: InitializeParameters<M>) => void;
-  onStreamPart: (args: {
-    setMetadata: Dispatch<SetStateAction<M>>;
-    setArtifact: Dispatch<SetStateAction<UIArtifact>>;
-    streamPart: DataUIPart<CustomUIDataTypes>;
-  }) => void;
 };
 
 export class Artifact<T extends string, M = any> {
@@ -75,11 +69,6 @@ export class Artifact<T extends string, M = any> {
   readonly actions: ArtifactAction<M>[];
   readonly toolbar: ArtifactToolbarItem[];
   readonly initialize?: (parameters: InitializeParameters) => void;
-  readonly onStreamPart: (args: {
-    setMetadata: Dispatch<SetStateAction<M>>;
-    setArtifact: Dispatch<SetStateAction<UIArtifact>>;
-    streamPart: DataUIPart<CustomUIDataTypes>;
-  }) => void;
 
   constructor(config: ArtifactConfig<T, M>) {
     this.kind = config.kind;
@@ -88,6 +77,5 @@ export class Artifact<T extends string, M = any> {
     this.actions = config.actions || [];
     this.toolbar = config.toolbar || [];
     this.initialize = config.initialize || (async () => ({}));
-    this.onStreamPart = config.onStreamPart;
   }
 }

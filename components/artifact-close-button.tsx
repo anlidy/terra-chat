@@ -3,7 +3,11 @@ import { initialArtifactData, useArtifact } from "@/hooks/use-artifact";
 import { CrossIcon } from "./icons";
 import { Button } from "./ui/button";
 
-function PureArtifactCloseButton() {
+function PureArtifactCloseButton({
+  onBeforeClose,
+}: {
+  onBeforeClose?: () => void;
+}) {
   const { setArtifact } = useArtifact();
 
   return (
@@ -11,11 +15,13 @@ function PureArtifactCloseButton() {
       className="h-fit p-2 dark:hover:bg-zinc-700"
       data-testid="artifact-close-button"
       onClick={() => {
+        onBeforeClose?.();
         setArtifact((currentArtifact) =>
           currentArtifact.status === "streaming"
             ? {
                 ...currentArtifact,
                 isVisible: false,
+                wasDismissed: true,
               }
             : { ...initialArtifactData, status: "idle" }
         );
@@ -27,4 +33,4 @@ function PureArtifactCloseButton() {
   );
 }
 
-export const ArtifactCloseButton = memo(PureArtifactCloseButton, () => true);
+export const ArtifactCloseButton = memo(PureArtifactCloseButton);

@@ -7,11 +7,12 @@ import { EditorView } from "@codemirror/view";
 import { basicSetup } from "codemirror";
 import { memo, useEffect, useRef } from "react";
 import type { Suggestion } from "@/lib/db/schema";
+import type { UIArtifact } from "./artifact";
 
 type EditorProps = {
   content: string;
   onSaveContent: (updatedContent: string, debounce: boolean) => void;
-  status: "streaming" | "idle";
+  status: UIArtifact["status"];
   isCurrentVersion: boolean;
   currentVersionIndex: number;
   suggestions: Suggestion[];
@@ -72,7 +73,7 @@ function PureCodeEditor({ content, onSaveContent, status }: EditorProps) {
   }, [onSaveContent]);
 
   useEffect(() => {
-    if (editorRef.current && content) {
+    if (editorRef.current) {
       const currentContent = editorRef.current.state.doc.toString();
 
       if (status === "streaming" || currentContent !== content) {

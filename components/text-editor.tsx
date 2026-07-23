@@ -22,11 +22,12 @@ import {
   suggestionsPlugin,
   suggestionsPluginKey,
 } from "@/lib/editor/suggestions";
+import type { UIArtifact } from "./artifact";
 
 type EditorProps = {
   content: string;
   onSaveContent: (updatedContent: string, debounce: boolean) => void;
-  status: "streaming" | "idle";
+  status: UIArtifact["status"];
   isCurrentVersion: boolean;
   currentVersionIndex: number;
   suggestions: Suggestion[];
@@ -91,7 +92,7 @@ function PureEditor({
   }, [onSaveContent]);
 
   useEffect(() => {
-    if (editorRef.current && content) {
+    if (editorRef.current) {
       const currentContent = buildContentFromDocument(
         editorRef.current.state.doc
       );
@@ -126,7 +127,7 @@ function PureEditor({
   }, [content, status]);
 
   useEffect(() => {
-    if (editorRef.current?.state.doc && content) {
+    if (editorRef.current?.state.doc) {
       const projectedSuggestions = projectWithPositions(
         editorRef.current.state.doc,
         suggestions
@@ -143,7 +144,7 @@ function PureEditor({
       transaction.setMeta(suggestionsPluginKey, { decorations });
       editorRef.current.dispatch(transaction);
     }
-  }, [suggestions, content]);
+  }, [suggestions]);
 
   return (
     <div className="prose dark:prose-invert relative" ref={containerRef} />

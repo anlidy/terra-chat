@@ -18,7 +18,7 @@ export function useAutoResume({
   resumeStream,
   setMessages,
 }: UseAutoResumeParams) {
-  const { dataStream } = useDataStream();
+  const { subscribeDataParts } = useDataStream();
 
   useEffect(() => {
     if (!autoResume) {
@@ -35,19 +35,17 @@ export function useAutoResume({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoResume, initialMessages.at, resumeStream]);
 
-  useEffect(() => {
-    if (!dataStream) {
-      return;
-    }
-    if (dataStream.length === 0) {
-      return;
-    }
-
-    const dataPart = dataStream[0];
-
-    if (dataPart.type === "data-appendMessage") {
-      const message = JSON.parse(dataPart.data);
-      setMessages([...initialMessages, message]);
-    }
-  }, [dataStream, initialMessages, setMessages]);
+  useEffect(
+    () =>
+      subscribeDataParts((parts) => {
+        const dataPart = parts.find(
+          (part) => part.type === "data-appendMessage"
+        );
+        if (dataPart?.type === "data-appendMessage") {
+          const message = JSON.parse(dataPart.data);
+          setMessages([...initialMessages, message]);
+        }
+      }),
+    [initialMessages, setMessages, subscribeDataParts]
+  );
 }

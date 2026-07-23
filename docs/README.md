@@ -25,7 +25,7 @@
 | --- | --- | --- |
 | [产品上下文](../PRODUCT.md) | Active | 用户、产品目标、定位、设计原则与无障碍基线 |
 | [界面设计系统](../DESIGN.md) | Active | 产品界面的颜色、排版、布局、组件和响应式规则 |
-| [Artifacts 功能文档](artifacts.md) | Needs review | Artifacts 数据流、类型、组件和扩展方式；含易漂移的行号引用，使用前需与代码核对 |
+| [Artifacts 架构](artifacts.md) | Active | 同步 Markdown 解析、流事件批处理、预览/编辑边界、保存与错误恢复、性能基准和扩展方式 |
 | [RAG 检索架构](../lib/rag/README.md) | Active | pgvector、PostgreSQL lexical 检索、RRF 与可选 rerank 的当前实现 |
 
 ## 变更记录

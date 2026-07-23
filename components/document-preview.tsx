@@ -1,6 +1,7 @@
 "use client";
 
 import equal from "fast-deep-equal";
+import Image from "next/image";
 import {
   type MouseEvent,
   memo,
@@ -14,13 +15,10 @@ import { useArtifact } from "@/hooks/use-artifact";
 import type { Document } from "@/lib/db/schema";
 import { cn, fetcher } from "@/lib/utils";
 import type { ArtifactKind, UIArtifact } from "./artifact";
-import { CodeEditor } from "./code-editor";
 import { DocumentToolCall, DocumentToolResult } from "./document";
 import { InlineDocumentSkeleton } from "./document-skeleton";
+import { Response } from "./elements/response";
 import { FileIcon, FullscreenIcon, ImageIcon, LoaderIcon } from "./icons";
-import { ImageEditor } from "./image-editor";
-import { SpreadsheetEditor } from "./sheet-editor";
-import { Editor } from "./text-editor";
 
 type DocumentPreviewProps = {
   isReadonly: boolean;
@@ -80,22 +78,24 @@ export function DocumentPreview({
     }
   }
 
-  if (isDocumentsFetching) {
-    return <LoadingSkeleton artifactKind={result.kind ?? args.kind} />;
-  }
+  const isCurrentStream =
+    artifact.documentId !== "init" &&
+    (!result?.id || artifact.documentId === result.id) &&
+    artifact.status !== "idle";
+  const document: Document | null = isCurrentStream
+    ? {
+        title: artifact.title,
+        kind: artifact.kind,
+        content: artifact.content,
+        id: artifact.documentId,
+        createdAt: new Date(),
+        userId: "noop",
+      }
+    : (previewDocument ?? null);
 
-  const document: Document | null = previewDocument
-    ? previewDocument
-    : artifact.status === "streaming"
-      ? {
-          title: artifact.title,
-          kind: artifact.kind,
-          content: artifact.content,
-          id: artifact.documentId,
-          createdAt: new Date(),
-          userId: "noop",
-        }
-      : null;
+  if (!document && isDocumentsFetching) {
+    return <LoadingSkeleton artifactKind={result?.kind ?? args?.kind} />;
+  }
 
   if (!document) {
     return <LoadingSkeleton artifactKind={artifact.kind} />;
@@ -109,11 +109,14 @@ export function DocumentPreview({
         setArtifact={setArtifact}
       />
       <DocumentHeader
-        isStreaming={artifact.status === "streaming"}
         kind={document.kind}
+        status={isCurrentStream ? artifact.status : "idle"}
         title={document.title}
       />
-      <DocumentContent document={document} />
+      <DocumentContent
+        document={document}
+        status={isCurrentStream ? artifact.status : "idle"}
+      />
     </div>
   );
 }
@@ -159,13 +162,17 @@ const PureHitboxLayer = ({
       const boundingBox = event.currentTarget.getBoundingClientRect();
 
       setArtifact((artifact) =>
-        artifact.status === "streaming"
+        artifact.status !== "idle" && artifact.documentId === result?.id
           ? { ...artifact, isVisible: true }
           : {
               ...artifact,
               title: result.title,
               documentId: result.id,
               kind: result.kind,
+              content: "",
+              errorMessage: undefined,
+              hasAutoOpened: false,
+              wasDismissed: false,
               isVisible: true,
               boundingBox: {
                 left: boundingBox.x,
@@ -206,16 +213,16 @@ const HitboxLayer = memo(PureHitboxLayer, (prevProps, nextProps) => {
 const PureDocumentHeader = ({
   title,
   kind,
-  isStreaming,
+  status,
 }: {
   title: string;
   kind: ArtifactKind;
-  isStreaming: boolean;
+  status: UIArtifact["status"];
 }) => (
   <div className="flex flex-row items-start justify-between gap-2 rounded-t-2xl border border-b-0 p-4 sm:items-center dark:border-zinc-700 dark:bg-muted">
     <div className="flex flex-row items-start gap-3 sm:items-center">
       <div className="text-muted-foreground">
-        {isStreaming ? (
+        {status === "streaming" ? (
           <div className="animate-spin">
             <LoaderIcon />
           </div>
@@ -225,7 +232,12 @@ const PureDocumentHeader = ({
           <FileIcon />
         )}
       </div>
-      <div className="-translate-y-1 font-medium sm:translate-y-0">{title}</div>
+      <div className="-translate-y-1 sm:translate-y-0">
+        <div className="font-medium">{title}</div>
+        {status === "error" ? (
+          <div className="text-destructive text-xs">Generation interrupted</div>
+        ) : null}
+      </div>
     </div>
     <div className="w-8" />
   </div>
@@ -235,16 +247,20 @@ const DocumentHeader = memo(PureDocumentHeader, (prevProps, nextProps) => {
   if (prevProps.title !== nextProps.title) {
     return false;
   }
-  if (prevProps.isStreaming !== nextProps.isStreaming) {
+  if (prevProps.status !== nextProps.status) {
     return false;
   }
 
   return true;
 });
 
-const DocumentContent = ({ document }: { document: Document }) => {
-  const { artifact } = useArtifact();
-
+const DocumentContent = ({
+  document,
+  status,
+}: {
+  document: Document;
+  status: UIArtifact["status"];
+}) => {
   const containerClassName = cn(
     "h-[257px] overflow-y-scroll rounded-b-2xl border border-t-0 dark:border-zinc-700 dark:bg-muted",
     {
@@ -253,42 +269,37 @@ const DocumentContent = ({ document }: { document: Document }) => {
     }
   );
 
-  const commonProps = {
-    content: document.content ?? "",
-    isCurrentVersion: true,
-    currentVersionIndex: 0,
-    status: artifact.status,
-    saveContent: () => null,
-    suggestions: [],
-  };
-
-  const handleSaveContent = () => null;
-
   return (
     <div className={containerClassName}>
       {document.kind === "text" ? (
-        <Editor {...commonProps} onSaveContent={handleSaveContent} />
+        <Response className="prose prose-sm dark:prose-invert" mode="static">
+          {document.content ?? ""}
+        </Response>
       ) : document.kind === "code" ? (
-        <div className="relative h-full w-full">
-          <div className="absolute inset-0">
-            <CodeEditor {...commonProps} onSaveContent={handleSaveContent} />
-          </div>
-        </div>
+        <pre className="min-h-full overflow-auto bg-zinc-950 p-4 text-zinc-100 text-xs">
+          <code>{document.content ?? ""}</code>
+        </pre>
       ) : document.kind === "sheet" ? (
-        <div className="relative h-full w-full p-4">
-          <div className="absolute inset-0">
-            <SpreadsheetEditor {...commonProps} />
-          </div>
-        </div>
+        <pre className="min-h-full overflow-auto p-4 font-mono text-xs whitespace-pre-wrap">
+          {document.content ?? ""}
+        </pre>
       ) : document.kind === "image" ? (
-        <ImageEditor
-          content={document.content ?? ""}
-          currentVersionIndex={0}
-          isCurrentVersion={true}
-          isInline={true}
-          status={artifact.status}
-          title={document.title}
-        />
+        document.content ? (
+          <Image
+            alt={document.title}
+            className="h-full w-full object-contain"
+            height={257}
+            src={`data:image/png;base64,${document.content}`}
+            unoptimized
+            width={450}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+            {status === "error"
+              ? "Image generation interrupted"
+              : "Generating image…"}
+          </div>
+        )
       ) : null}
     </div>
   );

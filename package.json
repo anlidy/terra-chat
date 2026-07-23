@@ -17,6 +17,8 @@
     "db:up": "drizzle-kit up",
     "test": "export PLAYWRIGHT=True && pnpm exec playwright test",
     "test:unit": "tsx --test evals/tests/*.test.ts lib/rag/*.test.ts",
+    "test:artifacts": "tsx --test artifacts/__tests__/*.test.ts",
+    "perf:artifacts": "tsx scripts/perf-artifacts.ts",
     "eval:rag:smoke": "tsx evals/src/run-smoke.ts",
     "eval:rag:download": "NODE_USE_ENV_PROXY=1 tsx evals/src/download-datasets.ts",
     "eval:rag:retrieval": "tsx --conditions=react-server evals/src/run-retrieval.ts",

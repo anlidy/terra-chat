@@ -99,10 +99,10 @@ function areEqual(
   if (prevProps.status !== nextProps.status) {
     return false;
   }
-  if (prevProps.status && nextProps.status) {
+  if (prevProps.messages.length !== nextProps.messages.length) {
     return false;
   }
-  if (prevProps.messages.length !== nextProps.messages.length) {
+  if (prevProps.messages.at(-1) !== nextProps.messages.at(-1)) {
     return false;
   }
   if (!equal(prevProps.votes, nextProps.votes)) {

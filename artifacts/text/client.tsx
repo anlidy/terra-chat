@@ -1,7 +1,8 @@
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { Artifact } from "@/components/create-artifact";
-import { DiffView } from "@/components/diffview";
 import { DocumentSkeleton } from "@/components/document-skeleton";
+import { Response } from "@/components/elements/response";
 import {
   ClockRewind,
   CopyIcon,
@@ -10,9 +11,17 @@ import {
   RedoIcon,
   UndoIcon,
 } from "@/components/icons";
-import { Editor } from "@/components/text-editor";
 import type { Suggestion } from "@/lib/db/schema";
 import { getSuggestions } from "../actions";
+
+const DiffView = dynamic(
+  () => import("@/components/diffview").then((module) => module.DiffView),
+  { loading: () => <DocumentSkeleton artifactKind="text" /> }
+);
+const Editor = dynamic(
+  () => import("@/components/text-editor").then((module) => module.Editor),
+  { loading: () => <DocumentSkeleton artifactKind="text" /> }
+);
 
 type TextArtifactMetadata = {
   suggestions: Suggestion[];
@@ -27,31 +36,6 @@ export const textArtifact = new Artifact<"text", TextArtifactMetadata>({
     setMetadata({
       suggestions,
     });
-  },
-  onStreamPart: ({ streamPart, setMetadata, setArtifact }) => {
-    if (streamPart.type === "data-suggestion") {
-      setMetadata((metadata) => {
-        return {
-          suggestions: [...metadata.suggestions, streamPart.data],
-        };
-      });
-    }
-
-    if (streamPart.type === "data-textDelta") {
-      setArtifact((draftArtifact) => {
-        return {
-          ...draftArtifact,
-          content: draftArtifact.content + streamPart.data,
-          isVisible:
-            draftArtifact.status === "streaming" &&
-            draftArtifact.content.length > 400 &&
-            draftArtifact.content.length < 450
-              ? true
-              : draftArtifact.isVisible,
-          status: "streaming",
-        };
-      });
-    }
   },
   content: ({
     mode,
@@ -73,6 +57,20 @@ export const textArtifact = new Artifact<"text", TextArtifactMetadata>({
       const newContent = getDocumentContentById(currentVersionIndex);
 
       return <DiffView newContent={newContent} oldContent={oldContent} />;
+    }
+
+    if (status === "streaming" || status === "error") {
+      return (
+        <div
+          aria-live="polite"
+          className="mx-auto w-full max-w-[75ch] px-4 py-8 md:px-12 md:py-16"
+          data-testid="artifact-streaming-preview"
+        >
+          <Response className="prose dark:prose-invert" mode="static">
+            {content}
+          </Response>
+        </div>
+      );
     }
 
     return (

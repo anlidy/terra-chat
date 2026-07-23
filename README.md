@@ -16,7 +16,7 @@
 
 - **多模型支持**: 通过 AI SDK 接入 OpenAI、Anthropic 等多家模型提供商
 - **流式对话**: 实时流式聊天，支持 markdown 渲染和代码高亮
-- **Artifacts**: 在对话中生成并预览代码、文档、表格、图片等内容
+- **Artifacts**: 实时预览文档、代码、表格和图片，完成后按需加载编辑器，并支持版本 Diff、保存状态与流错误恢复
 - **RAG 检索增强生成**: 支持文档上传解析（PDF/DOCX/XLSX/PPTX/TXT），pgvector 与 PostgreSQL lexical 检索经 RRF 融合，并可用阿里云百炼 Qwen3-Rerank 重排序
 - **项目知识库**: 一个项目可包含多个会话和共享文件库，项目会话自动检索项目资料，同时保留会话自己的附件
 - **网络搜索**: 集成 Tavily 搜索引擎，实时获取网络信息
@@ -68,6 +68,8 @@ pnpm lint         # 代码检查
 pnpm format       # 代码格式化
 pnpm test         # 运行 E2E 测试
 pnpm test:unit    # 运行单元测试与 RAG 评测契约测试
+pnpm test:artifacts # 运行 Artifact Markdown 与流状态单测
+pnpm perf:artifacts # 运行本地 Artifact 固定压力基准
 pnpm eval:rag:smoke # 运行离线 RAG smoke 评测
 pnpm eval:rag:real  # 运行 quick 中英文及项目场景真实评测
 pnpm eval:rag:full  # 运行完整中英文四策略评测
@@ -75,6 +77,42 @@ pnpm db:generate  # 生成数据库迁移文件
 pnpm db:migrate   # 执行数据库迁移
 pnpm db:studio    # 打开 Drizzle Studio
 ```
+
+## Playwright 浏览器测试
+
+现在可以使用 Playwright 运行端到端测试。首次在本机运行前安装 Chromium 和系统依赖：
+
+```bash
+pnpm exec playwright install --with-deps chromium
+```
+
+`playwright.config.ts` 会自动启动 `pnpm dev`，并等待 `/ping` 可用；如果本地已经启动开发服务器，则直接复用。运行前仍需按本页“本地运行”章节准备 `.env.local`、PostgreSQL 和认证所需配置。
+
+```bash
+# 运行全部 Playwright E2E 测试
+pnpm test
+
+# 只运行 Artifact 桌面与移动端回归（当前 7 个场景）
+pnpm exec playwright test tests/e2e/artifacts.test.ts --project=e2e
+
+# 打开最近一次 HTML 报告
+pnpm exec playwright show-report
+```
+
+Artifact 浏览器用例会在浏览器内 mock timed `ReadableStream` 和文档 API，覆盖 text、code、sheet、image 的流式预览、完成态编辑器、关闭响应、空文档保存失败和错误恢复。`pnpm test:artifacts` 是 Markdown parser 与 stream reducer 的快速单元测试，不会启动浏览器。
+
+当前 Ubuntu 26.04 尚不在 Playwright 1.51 的原生平台列表中，可使用 Ubuntu 24.04 Chromium fallback；系统动态库仍应通过 `install --with-deps`、容器镜像或 CI 环境提供：
+
+```bash
+PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 \
+  pnpm exec playwright install --with-deps chromium
+
+PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 \
+  pnpm exec playwright test tests/e2e/artifacts.test.ts \
+  --project=e2e --workers=1
+```
+
+GitHub Actions 已使用 `pnpm exec playwright install --with-deps chromium` 安装浏览器，并在 push 或 pull request 时运行 `pnpm test`。
 
 ## 项目结构
 

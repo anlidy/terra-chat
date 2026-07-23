@@ -1,5 +1,5 @@
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
-import { CodeEditor } from "@/components/code-editor";
 import {
   Console,
   type ConsoleOutput,
@@ -15,6 +15,11 @@ import {
   UndoIcon,
 } from "@/components/icons";
 import { generateUUID } from "@/lib/utils";
+
+const CodeEditor = dynamic(
+  () => import("@/components/code-editor").then((module) => module.CodeEditor),
+  { loading: () => <div className="h-80 animate-pulse bg-muted" /> }
+);
 
 const OUTPUT_HANDLERS = {
   matplotlib: `
@@ -75,22 +80,18 @@ export const codeArtifact = new Artifact<"code", Metadata>({
       outputs: [],
     });
   },
-  onStreamPart: ({ streamPart, setArtifact }) => {
-    if (streamPart.type === "data-codeDelta") {
-      setArtifact((draftArtifact) => ({
-        ...draftArtifact,
-        content: streamPart.data,
-        isVisible:
-          draftArtifact.status === "streaming" &&
-          draftArtifact.content.length > 300 &&
-          draftArtifact.content.length < 310
-            ? true
-            : draftArtifact.isVisible,
-        status: "streaming",
-      }));
-    }
-  },
   content: ({ metadata, setMetadata, ...props }) => {
+    if (props.status === "streaming" || props.status === "error") {
+      return (
+        <pre
+          className="min-h-full overflow-x-auto bg-zinc-950 p-6 text-zinc-100 text-sm"
+          data-testid="artifact-streaming-preview"
+        >
+          <code>{props.content}</code>
+        </pre>
+      );
+    }
+
     return (
       <>
         <div className="px-1">

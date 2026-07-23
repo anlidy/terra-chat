@@ -10,6 +10,8 @@ export const initialArtifactData: UIArtifact = {
   kind: "text",
   title: "",
   status: "idle",
+  hasAutoOpened: false,
+  wasDismissed: false,
   isVisible: false,
   boundingBox: {
     top: 0,

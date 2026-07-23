@@ -6,16 +6,6 @@ import { ImageEditor } from "@/components/image-editor";
 export const imageArtifact = new Artifact({
   kind: "image",
   description: "Useful for image generation",
-  onStreamPart: ({ streamPart, setArtifact }) => {
-    if (streamPart.type === "data-imageDelta") {
-      setArtifact((draftArtifact) => ({
-        ...draftArtifact,
-        content: streamPart.data,
-        isVisible: true,
-        status: "streaming",
-      }));
-    }
-  },
   content: ImageEditor,
   actions: [
     {

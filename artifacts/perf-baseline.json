@@ -1,0 +1,9 @@
+{
+  "capturedAt": "2026-07-22T20:49:00+08:00",
+  "scenario": "Next.js production build, app/(chat)/page entry JS",
+  "entryJavaScriptBytes": 3923308,
+  "largestEditorRelatedChunks": [
+    { "file": "c4fa343a74d7830a.js", "bytes": 1547125 },
+    { "file": "88e6095584a7c970.js", "bytes": 1818475 }
+  ]
+}

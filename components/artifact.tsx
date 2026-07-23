@@ -1,6 +1,5 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { formatDistance } from "date-fns";
-import equal from "fast-deep-equal";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   type Dispatch,
@@ -8,6 +7,7 @@ import {
   type SetStateAction,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import useSWR, { useSWRConfig } from "swr";
@@ -25,6 +25,7 @@ import { ArtifactCloseButton } from "./artifact-close-button";
 import { ArtifactMessages } from "./artifact-messages";
 import { MultimodalInput } from "./multimodal-input";
 import { Toolbar } from "./toolbar";
+import { Button } from "./ui/button";
 import { useSidebar } from "./ui/sidebar";
 import { VersionFooter } from "./version-footer";
 
@@ -42,7 +43,10 @@ export type UIArtifact = {
   kind: ArtifactKind;
   content: string;
   isVisible: boolean;
-  status: "streaming" | "idle";
+  status: "streaming" | "idle" | "error";
+  errorMessage?: string;
+  hasAutoOpened: boolean;
+  wasDismissed: boolean;
   boundingBox: {
     top: number;
     left: number;
@@ -86,12 +90,10 @@ function PureArtifact({
 }) {
   const { artifact, setArtifact, metadata, setMetadata } = useArtifact();
 
-  const {
-    data: documents,
-    isLoading: isDocumentsFetching,
-    mutate: mutateDocuments,
-  } = useSWR<Document[]>(
-    artifact.documentId !== "init" && artifact.status !== "streaming"
+  const { data: documents, isLoading: isDocumentsFetching } = useSWR<
+    Document[]
+  >(
+    artifact.documentId !== "init" && artifact.status === "idle"
       ? `/api/document?id=${artifact.documentId}`
       : null,
     fetcher
@@ -104,10 +106,10 @@ function PureArtifact({
   const { open: isSidebarOpen } = useSidebar();
 
   useEffect(() => {
-    if (documents && documents.length > 0) {
+    if (artifact.status === "idle" && documents && documents.length > 0) {
       const mostRecentDocument = documents.at(-1);
 
-      if (mostRecentDocument) {
+      if (mostRecentDocument?.id === artifact.documentId) {
         setDocument(mostRecentDocument);
         setCurrentVersionIndex(documents.length - 1);
         setArtifact((currentArtifact) => ({
@@ -116,61 +118,66 @@ function PureArtifact({
         }));
       }
     }
-  }, [documents, setArtifact]);
-
-  useEffect(() => {
-    mutateDocuments();
-  }, [mutateDocuments]);
+  }, [artifact.documentId, artifact.status, documents, setArtifact]);
 
   const { mutate } = useSWRConfig();
-  const [isContentDirty, setIsContentDirty] = useState(false);
+  const [saveState, setSaveState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const activeDocumentIdRef = useRef(artifact.documentId);
+  const saveRequestRef = useRef(0);
+  const wasVisibleRef = useRef(artifact.isVisible);
 
   const handleContentChange = useCallback(
-    (updatedContent: string) => {
-      if (!artifact) {
+    async (updatedContent: string) => {
+      const documentId = artifact.documentId;
+      if (documentId === "init") {
         return;
       }
+      const requestId = ++saveRequestRef.current;
+      setSaveState("saving");
 
-      mutate<Document[]>(
-        `/api/document?id=${artifact.documentId}`,
-        async (currentDocuments) => {
-          if (!currentDocuments) {
-            return [];
-          }
+      try {
+        const response = await fetch(`/api/document?id=${documentId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: artifact.title,
+            content: updatedContent,
+            kind: artifact.kind,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`Save failed with status ${response.status}`);
+        }
 
-          const currentDocument = currentDocuments.at(-1);
+        const [savedDocument] = (await response.json()) as Document[];
+        if (
+          !savedDocument ||
+          activeDocumentIdRef.current !== documentId ||
+          saveRequestRef.current !== requestId
+        ) {
+          return;
+        }
 
-          if (!currentDocument?.content) {
-            setIsContentDirty(false);
-            return currentDocuments;
-          }
-
-          if (currentDocument.content !== updatedContent) {
-            await fetch(`/api/document?id=${artifact.documentId}`, {
-              method: "POST",
-              body: JSON.stringify({
-                title: artifact.title,
-                content: updatedContent,
-                kind: artifact.kind,
-              }),
-            });
-
-            setIsContentDirty(false);
-
-            const newDocument = {
-              ...currentDocument,
-              content: updatedContent,
-              createdAt: new Date(),
-            };
-
-            return [...currentDocuments, newDocument];
-          }
-          return currentDocuments;
-        },
-        { revalidate: false }
-      );
+        setDocument(savedDocument);
+        setCurrentVersionIndex((index) => index + 1);
+        setSaveState("saved");
+        await mutate<Document[]>(
+          `/api/document?id=${documentId}`,
+          (currentDocuments = []) => [...currentDocuments, savedDocument],
+          { revalidate: false }
+        );
+      } catch (_error) {
+        if (
+          activeDocumentIdRef.current === documentId &&
+          saveRequestRef.current === requestId
+        ) {
+          setSaveState("error");
+        }
+      }
     },
-    [artifact, mutate]
+    [artifact.documentId, artifact.kind, artifact.title, mutate]
   );
 
   const debouncedHandleContentChange = useDebounceCallback(
@@ -180,18 +187,39 @@ function PureArtifact({
 
   const saveContent = useCallback(
     (updatedContent: string, debounce: boolean) => {
-      if (document && updatedContent !== document.content) {
-        setIsContentDirty(true);
+      if (document && updatedContent === (document.content ?? "")) {
+        return;
+      }
 
-        if (debounce) {
-          debouncedHandleContentChange(updatedContent);
-        } else {
-          handleContentChange(updatedContent);
-        }
+      setSaveState("saving");
+      if (debounce) {
+        debouncedHandleContentChange(updatedContent);
+      } else {
+        debouncedHandleContentChange.cancel();
+        handleContentChange(updatedContent);
       }
     },
     [document, debouncedHandleContentChange, handleContentChange]
   );
+
+  useEffect(() => {
+    activeDocumentIdRef.current = artifact.documentId;
+    saveRequestRef.current += 1;
+    debouncedHandleContentChange.cancel();
+    setDocument(null);
+    setCurrentVersionIndex(-1);
+    setMode("edit");
+    setSaveState("idle");
+
+    return () => debouncedHandleContentChange.cancel();
+  }, [artifact.documentId, debouncedHandleContentChange]);
+
+  useEffect(() => {
+    if (wasVisibleRef.current && !artifact.isVisible) {
+      debouncedHandleContentChange.flush();
+    }
+    wasVisibleRef.current = artifact.isVisible;
+  }, [artifact.isVisible, debouncedHandleContentChange]);
 
   function getDocumentContentById(index: number) {
     if (!documents) {
@@ -251,12 +279,20 @@ function PureArtifact({
   }
 
   useEffect(() => {
+    let isActive = true;
     if (artifact.documentId !== "init" && artifactDefinition.initialize) {
       artifactDefinition.initialize({
         documentId: artifact.documentId,
-        setMetadata,
+        setMetadata: (value) => {
+          if (isActive) {
+            setMetadata(value);
+          }
+        },
       });
     }
+    return () => {
+      isActive = false;
+    };
   }, [artifact.documentId, artifactDefinition, setMetadata]);
 
   return (
@@ -266,7 +302,7 @@ function PureArtifact({
           animate={{ opacity: 1 }}
           className="fixed top-0 left-0 z-50 flex h-dvh w-dvw flex-row bg-transparent"
           data-testid="artifact"
-          exit={{ opacity: 0, transition: { delay: 0.4 } }}
+          exit={{ opacity: 0, transition: { duration: 0 } }}
           initial={{ opacity: 1 }}
         >
           {!isMobile && (
@@ -419,15 +455,23 @@ function PureArtifact({
           >
             <div className="flex flex-row items-start justify-between p-2">
               <div className="flex flex-row items-start gap-4">
-                <ArtifactCloseButton />
+                <ArtifactCloseButton
+                  onBeforeClose={debouncedHandleContentChange.flush}
+                />
 
                 <div className="flex flex-col">
                   <div className="font-medium">{artifact.title}</div>
 
-                  {isContentDirty ? (
+                  {artifact.status === "streaming" ? (
                     <div className="text-muted-foreground text-sm">
-                      Saving changes...
+                      Generating…
                     </div>
+                  ) : saveState === "saving" ? (
+                    <div className="text-muted-foreground text-sm">Saving…</div>
+                  ) : saveState === "error" ? (
+                    <div className="text-destructive text-sm">Save failed</div>
+                  ) : saveState === "saved" ? (
+                    <div className="text-muted-foreground text-sm">Saved</div>
                   ) : document ? (
                     <div className="text-muted-foreground text-sm">
                       {`Updated ${formatDistance(
@@ -454,6 +498,48 @@ function PureArtifact({
                 setMetadata={setMetadata}
               />
             </div>
+
+            {artifact.status === "error" ? (
+              <div
+                className="mx-3 mb-2 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm"
+                role="alert"
+              >
+                <span>
+                  {artifact.errorMessage ??
+                    "Generation stopped. Partial content was preserved."}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      debouncedHandleContentChange.flush();
+                      setArtifact((current) => ({
+                        ...current,
+                        isVisible: false,
+                        wasDismissed: true,
+                      }));
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setArtifact((current) => ({
+                        ...current,
+                        status: "streaming",
+                        errorMessage: undefined,
+                      }));
+                      regenerate();
+                    }}
+                    size="sm"
+                    variant="outline"
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="h-full max-w-full! items-center overflow-y-scroll bg-background dark:bg-muted">
               <artifactDefinition.content
@@ -511,13 +597,19 @@ export const Artifact = memo(PureArtifact, (prevProps, nextProps) => {
   if (prevProps.status !== nextProps.status) {
     return false;
   }
-  if (!equal(prevProps.votes, nextProps.votes)) {
+  if (prevProps.votes !== nextProps.votes) {
     return false;
   }
   if (prevProps.input !== nextProps.input) {
     return false;
   }
-  if (!equal(prevProps.messages, nextProps.messages.length)) {
+  if (prevProps.messages !== nextProps.messages) {
+    return false;
+  }
+  if (prevProps.attachments !== nextProps.attachments) {
+    return false;
+  }
+  if (prevProps.selectedModelId !== nextProps.selectedModelId) {
     return false;
   }
   return true;

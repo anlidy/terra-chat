@@ -1,15 +1,13 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useState } from "react";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, preserveNewlines, sanitizeText } from "@/lib/utils";
-import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
-import { DocumentPreview } from "./document-preview";
 import { MessageContent } from "./elements/message";
-import { Response } from "./elements/response";
 import {
   Tool,
   ToolContent,
@@ -20,9 +18,18 @@ import {
 import { ImageLightbox } from "./image-lightbox";
 import { MessageActions } from "./message-actions";
 import { MessageEditor } from "./message-editor";
-import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
+
+const DocumentPreview = dynamic(() =>
+  import("./document-preview").then((module) => module.DocumentPreview)
+);
+const MessageReasoning = dynamic(() =>
+  import("./message-reasoning").then((module) => module.MessageReasoning)
+);
+const Response = dynamic(() =>
+  import("./elements/response").then((module) => module.Response)
+);
 
 const PurePreviewMessage = ({
   addToolApprovalResponse,
@@ -51,8 +58,6 @@ const PurePreviewMessage = ({
   const attachmentsFromMessage = message.parts.filter(
     (part) => part.type === "file"
   );
-
-  useDataStream();
 
   return (
     <div

@@ -1,3 +1,4 @@
+import dynamic from "next/dynamic";
 import { parse, unparse } from "papaparse";
 import { toast } from "sonner";
 import { Artifact } from "@/components/create-artifact";
@@ -8,7 +9,14 @@ import {
   SparklesIcon,
   UndoIcon,
 } from "@/components/icons";
-import { SpreadsheetEditor } from "@/components/sheet-editor";
+
+const SpreadsheetEditor = dynamic(
+  () =>
+    import("@/components/sheet-editor").then(
+      (module) => module.SpreadsheetEditor
+    ),
+  { loading: () => <div className="h-80 animate-pulse bg-muted" /> }
+);
 
 type Metadata = any;
 
@@ -16,17 +24,18 @@ export const sheetArtifact = new Artifact<"sheet", Metadata>({
   kind: "sheet",
   description: "Useful for working with spreadsheets",
   initialize: () => null,
-  onStreamPart: ({ setArtifact, streamPart }) => {
-    if (streamPart.type === "data-sheetDelta") {
-      setArtifact((draftArtifact) => ({
-        ...draftArtifact,
-        content: streamPart.data,
-        isVisible: true,
-        status: "streaming",
-      }));
-    }
-  },
   content: ({ content, currentVersionIndex, onSaveContent, status }) => {
+    if (status === "streaming" || status === "error") {
+      return (
+        <pre
+          className="min-h-full overflow-auto p-6 font-mono text-sm whitespace-pre-wrap"
+          data-testid="artifact-streaming-preview"
+        >
+          {content}
+        </pre>
+      );
+    }
+
     return (
       <SpreadsheetEditor
         content={content}
