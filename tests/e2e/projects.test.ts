@@ -5,6 +5,10 @@ test.describe("Projects", () => {
   test("creates a project and a nested project chat", async ({ page }) => {
     await page.goto("/");
 
+    await page
+      .locator('[data-sidebar="sidebar"]')
+      .getByTestId("sidebar-toggle-button")
+      .click();
     await page.getByRole("button", { name: "Create project" }).click();
     const projectName = `Atlas research ${Date.now()}`;
     await page.getByRole("textbox", { name: "Project name" }).fill(projectName);
