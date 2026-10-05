@@ -58,4 +58,6 @@ export type Attachment = {
   url: string;
   contentType: string;
   resourceId?: string;
+  /** Knowledge collection the document was attached to (chat or project). */
+  collectionId?: string;
 };

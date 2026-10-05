@@ -68,17 +68,12 @@ export async function DELETE(_: Request, { params }: RouteContext) {
     return new ChatbotError("unauthorized:chat").toResponse();
   }
   const { id } = await params;
-  const resources = await getDocumentsByProject({
-    projectId: id,
-    userId: session.user.id,
-  });
-  const project = await deleteProject({ id, userId: session.user.id });
-  if (!project) {
+  const result = await deleteProject({ id, userId: session.user.id });
+  if (!result) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });
   }
 
-  await Promise.allSettled(
-    resources.map((resource) => deleteDocumentBlob(resource.fileUrl))
-  );
-  return NextResponse.json({ project });
+  // Files still shared with a chat attachment are kept.
+  await Promise.allSettled(result.fileUrls.map(deleteDocumentBlob));
+  return NextResponse.json({ project: result.project });
 }

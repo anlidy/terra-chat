@@ -27,8 +27,13 @@ export async function GET(
   return NextResponse.json({ resource: safeResource });
 }
 
+/**
+ * DELETE /api/resources/:id?collectionId=...
+ * With a collectionId the file is only removed from that project or chat;
+ * the stored file is deleted once no other collection still uses it.
+ */
 export async function DELETE(
-  _: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
@@ -36,14 +41,18 @@ export async function DELETE(
     return new ChatbotError("unauthorized:chat").toResponse();
   }
   const { id } = await params;
-  const resource = await getDocumentResourceById({
+  const collectionId =
+    new URL(request.url).searchParams.get("collectionId") ?? undefined;
+  const result = await deleteDocumentResource({
     id,
     userId: session.user.id,
+    collectionId,
   });
-  if (!resource) {
+  if (!result) {
     return NextResponse.json({ error: "File not found." }, { status: 404 });
   }
-  await deleteDocumentBlob(resource.fileUrl);
-  await deleteDocumentResource({ id, userId: session.user.id });
+  if (result.deleted && result.fileUrl) {
+    await deleteDocumentBlob(result.fileUrl);
+  }
   return NextResponse.json({ deleted: true });
 }

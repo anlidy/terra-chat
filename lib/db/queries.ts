@@ -19,6 +19,7 @@ import {
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import type { ArtifactKind } from "@/components/artifact";
+import { canReuseResource, findOrphanedResourceIds } from "@/lib/rag/dedup";
 import { buildTsQuery } from "@/lib/rag/lexical-query";
 import { resolveChatCollectionIds } from "@/lib/rag/scope";
 import { ChatbotError } from "../errors";
@@ -81,6 +82,45 @@ if (process.env.NODE_ENV !== "production") {
 
 const db = drizzle(client);
 type ChatVisibility = "public" | "private";
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Unlinks every resource from the given collections and deletes the ones no
+ * other collection still uses. Returns the blob URLs of deleted resources so
+ * callers can remove the stored files after the transaction commits.
+ */
+async function detachCollectionResources(
+  tx: Transaction,
+  collectionIds: string[]
+): Promise<string[]> {
+  if (collectionIds.length === 0) {
+    return [];
+  }
+  const detached = await tx
+    .delete(collectionResource)
+    .where(inArray(collectionResource.collectionId, collectionIds))
+    .returning({ id: collectionResource.resourceId });
+  if (detached.length === 0) {
+    return [];
+  }
+  const detachedIds = detached.map((link) => link.id);
+  const stillLinked = await tx
+    .selectDistinct({ id: collectionResource.resourceId })
+    .from(collectionResource)
+    .where(inArray(collectionResource.resourceId, detachedIds));
+  const orphanedIds = findOrphanedResourceIds(
+    detachedIds,
+    stillLinked.map((link) => link.id)
+  );
+  if (orphanedIds.length === 0) {
+    return [];
+  }
+  const deleted = await tx
+    .delete(documentResource)
+    .where(inArray(documentResource.id, orphanedIds))
+    .returning({ fileUrl: documentResource.fileUrl });
+  return deleted.map((resource) => resource.fileUrl);
+}
 
 export async function closeDatabaseConnection(): Promise<void> {
   await client.end({ timeout: 5 });
@@ -203,27 +243,17 @@ export async function deleteChatById({ id }: { id: string }) {
         .where(eq(chat.id, id))
         .returning();
 
+      let fileUrls: string[] = [];
       if (selectedChat) {
-        const resources = await tx
-          .select({ id: collectionResource.resourceId })
-          .from(collectionResource)
-          .where(
-            eq(collectionResource.collectionId, selectedChat.collectionId)
-          );
-        if (resources.length > 0) {
-          await tx.delete(documentResource).where(
-            inArray(
-              documentResource.id,
-              resources.map((resource) => resource.id)
-            )
-          );
-        }
+        fileUrls = await detachCollectionResources(tx, [
+          selectedChat.collectionId,
+        ]);
         await tx
           .delete(knowledgeCollection)
           .where(eq(knowledgeCollection.id, selectedChat.collectionId));
       }
 
-      return chatsDeleted;
+      return { chat: chatsDeleted, fileUrls };
     });
   } catch (error) {
     throw new ChatbotError("bad_request:database", error);
@@ -244,43 +274,24 @@ export async function deleteAllChatsByUserId({ userId }: { userId: string }) {
     const chatIds = userChats.map((c) => c.id);
     const collectionIds = userChats.map((c) => c.collectionId);
 
-    const resources = await db
-      .selectDistinct({
-        id: collectionResource.resourceId,
-        fileUrl: documentResource.fileUrl,
-      })
-      .from(collectionResource)
-      .innerJoin(
-        documentResource,
-        eq(documentResource.id, collectionResource.resourceId)
-      )
-      .where(inArray(collectionResource.collectionId, collectionIds));
+    return await db.transaction(async (tx) => {
+      await tx.delete(vote).where(inArray(vote.chatId, chatIds));
+      await tx.delete(message).where(inArray(message.chatId, chatIds));
+      await tx.delete(stream).where(inArray(stream.chatId, chatIds));
 
-    await db.delete(vote).where(inArray(vote.chatId, chatIds));
-    await db.delete(message).where(inArray(message.chatId, chatIds));
-    await db.delete(stream).where(inArray(stream.chatId, chatIds));
+      const deletedChats = await tx
+        .delete(chat)
+        .where(eq(chat.userId, userId))
+        .returning();
 
-    const deletedChats = await db
-      .delete(chat)
-      .where(eq(chat.userId, userId))
-      .returning();
+      // Resources shared with project knowledge survive; only orphans go.
+      const fileUrls = await detachCollectionResources(tx, collectionIds);
+      await tx
+        .delete(knowledgeCollection)
+        .where(inArray(knowledgeCollection.id, collectionIds));
 
-    if (resources.length > 0) {
-      await db.delete(documentResource).where(
-        inArray(
-          documentResource.id,
-          resources.map((resource) => resource.id)
-        )
-      );
-    }
-    await db
-      .delete(knowledgeCollection)
-      .where(inArray(knowledgeCollection.id, collectionIds));
-
-    return {
-      deletedCount: deletedChats.length,
-      fileUrls: resources.map((resource) => resource.fileUrl),
-    };
+      return { deletedCount: deletedChats.length, fileUrls };
+    });
   } catch (error) {
     throw new ChatbotError("bad_request:database", error);
   }
@@ -565,20 +576,9 @@ export async function deleteProject({
         .set({ projectId: null })
         .where(eq(chat.projectId, id));
 
-      const resources = await tx
-        .select({ id: collectionResource.resourceId })
-        .from(collectionResource)
-        .where(
-          eq(collectionResource.collectionId, selectedProject.collectionId)
-        );
-      if (resources.length > 0) {
-        await tx.delete(documentResource).where(
-          inArray(
-            documentResource.id,
-            resources.map((resource) => resource.id)
-          )
-        );
-      }
+      const fileUrls = await detachCollectionResources(tx, [
+        selectedProject.collectionId,
+      ]);
 
       const [deleted] = await tx
         .delete(project)
@@ -587,7 +587,7 @@ export async function deleteProject({
       await tx
         .delete(knowledgeCollection)
         .where(eq(knowledgeCollection.id, selectedProject.collectionId));
-      return deleted ?? null;
+      return deleted ? { project: deleted, fileUrls } : null;
     });
   } catch (error) {
     throw new ChatbotError("bad_request:database", error);
@@ -1481,22 +1481,140 @@ export async function getDocumentResourceById({
   }
 }
 
+/**
+ * Removes a resource from one collection, or from everywhere when no
+ * collection is given. The resource row itself is only deleted once no
+ * collection references it; `deleted` tells the caller whether to remove the
+ * stored blob.
+ */
 export async function deleteDocumentResource({
   id,
   userId,
+  collectionId,
 }: {
   id: string;
   userId: string;
+  collectionId?: string;
+}): Promise<{ deleted: boolean; fileUrl: string | null } | null> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [owned] = await tx
+        .select({ id: documentResource.id })
+        .from(documentResource)
+        .where(
+          and(eq(documentResource.id, id), eq(documentResource.userId, userId))
+        )
+        .limit(1);
+      if (!owned) {
+        return null;
+      }
+
+      if (collectionId) {
+        await tx
+          .delete(collectionResource)
+          .where(
+            and(
+              eq(collectionResource.collectionId, collectionId),
+              eq(collectionResource.resourceId, id)
+            )
+          );
+        const [remaining] = await tx
+          .select({ id: collectionResource.resourceId })
+          .from(collectionResource)
+          .where(eq(collectionResource.resourceId, id))
+          .limit(1);
+        if (remaining) {
+          return { deleted: false, fileUrl: null };
+        }
+      }
+
+      const [deleted] = await tx
+        .delete(documentResource)
+        .where(eq(documentResource.id, id))
+        .returning({ fileUrl: documentResource.fileUrl });
+      return { deleted: true, fileUrl: deleted?.fileUrl ?? null };
+    });
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", error);
+  }
+}
+
+/**
+ * Finds an already indexed copy of the same file for this user. Lookups never
+ * cross users, so uploads cannot reveal whether someone else owns a file.
+ */
+export async function findReusableDocumentResource({
+  userId,
+  contentHash,
+  pipelineVersion,
+}: {
+  userId: string;
+  contentHash: string;
+  pipelineVersion: string;
 }) {
   try {
-    const [deleted] = await db
-      .delete(documentResource)
+    const candidates = await db
+      .select({
+        id: documentResource.id,
+        fileName: documentResource.fileName,
+        status: documentResource.status,
+        pipelineVersion: documentResource.pipelineVersion,
+      })
+      .from(documentResource)
       .where(
-        and(eq(documentResource.id, id), eq(documentResource.userId, userId))
+        and(
+          eq(documentResource.userId, userId),
+          eq(documentResource.contentHash, contentHash)
+        )
       )
-      .returning();
-    return deleted ?? null;
+      .orderBy(desc(documentResource.createdAt));
+    return (
+      candidates.find((candidate) =>
+        canReuseResource(candidate, pipelineVersion)
+      ) ?? null
+    );
   } catch (error) {
+    throw new ChatbotError("bad_request:database", error);
+  }
+}
+
+export async function linkResourceToCollection({
+  userId,
+  collectionId,
+  resourceId,
+}: {
+  userId: string;
+  collectionId: string;
+  resourceId: string;
+}) {
+  try {
+    await db.transaction(async (tx) => {
+      const [ownedCollection] = await tx
+        .select({ id: knowledgeCollection.id })
+        .from(knowledgeCollection)
+        .where(
+          and(
+            eq(knowledgeCollection.id, collectionId),
+            eq(knowledgeCollection.userId, userId)
+          )
+        )
+        .limit(1);
+      if (!ownedCollection) {
+        throw new ChatbotError("not_found:database", "Collection not found");
+      }
+      await tx
+        .insert(collectionResource)
+        .values({ collectionId, resourceId })
+        .onConflictDoNothing();
+      await tx
+        .update(project)
+        .set({ updatedAt: new Date() })
+        .where(eq(project.collectionId, collectionId));
+    });
+  } catch (error) {
+    if (error instanceof ChatbotError) {
+      throw error;
+    }
     throw new ChatbotError("bad_request:database", error);
   }
 }

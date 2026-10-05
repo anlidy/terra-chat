@@ -278,9 +278,10 @@ export function ProjectWorkspace({
     if (!resourceToDelete) {
       return;
     }
-    const response = await fetch(`/api/resources/${resourceToDelete.id}`, {
-      method: "DELETE",
-    });
+    const response = await fetch(
+      `/api/resources/${resourceToDelete.id}?collectionId=${data.project.collectionId}`,
+      { method: "DELETE" }
+    );
     if (!response.ok) {
       toast({
         type: "error",

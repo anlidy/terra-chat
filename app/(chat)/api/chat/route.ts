@@ -40,7 +40,6 @@ import {
   deleteChatById,
   getChatById,
   getCustomProviderById,
-  getDocumentsByCollection,
   getMessageCountByUserId,
   getMessagesByChatId,
   getRetrievalScopeForChat,
@@ -592,14 +591,8 @@ export async function DELETE(request: Request) {
     return new ChatbotError("forbidden:chat").toResponse();
   }
 
-  const resources = await getDocumentsByCollection({
-    collectionId: chat.collectionId,
-    userId: session.user.id,
-  });
-  const deletedChat = await deleteChatById({ id });
-  await Promise.allSettled(
-    resources.map((resource) => deleteDocumentBlob(resource.fileUrl))
-  );
+  const { chat: deletedChat, fileUrls } = await deleteChatById({ id });
+  await Promise.allSettled(fileUrls.map(deleteDocumentBlob));
 
   return Response.json(deletedChat, { status: 200 });
 }

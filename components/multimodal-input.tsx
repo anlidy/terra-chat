@@ -247,9 +247,10 @@ function PureMultimodalInput({
 
         if (response.ok) {
           const data = await response.json();
-          const { url, pathname, contentType, resourceId } = data;
+          const { url, pathname, contentType, resourceId, collectionId } = data;
 
-          if (resourceId) {
+          // Deduplicated uploads reuse an already indexed document.
+          if (resourceId && data.status !== "ready") {
             setPendingDocIds((prev) => [...prev, resourceId]);
           }
 
@@ -258,6 +259,7 @@ function PureMultimodalInput({
             name: pathname,
             contentType,
             resourceId,
+            collectionId,
           };
         }
         const { error } = await response.json();
@@ -484,7 +486,10 @@ function PureMultimodalInput({
                     setPendingDocIds((current) =>
                       current.filter((id) => id !== attachment.resourceId)
                     );
-                    fetch(`/api/resources/${attachment.resourceId}`, {
+                    const scope = attachment.collectionId
+                      ? `?collectionId=${attachment.collectionId}`
+                      : "";
+                    fetch(`/api/resources/${attachment.resourceId}${scope}`, {
                       method: "DELETE",
                     })
                       .then((response) => {

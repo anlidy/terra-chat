@@ -4,8 +4,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/app/(auth)/auth";
-import { getChatById, getProjectById, saveChat } from "@/lib/db/queries";
+import {
+  findReusableDocumentResource,
+  getChatById,
+  getProjectById,
+  linkResourceToCollection,
+  saveChat,
+} from "@/lib/db/queries";
 import { deleteDocumentBlob } from "@/lib/document-blob";
+import { RAG_PIPELINE_VERSION } from "@/lib/rag/config";
 import { ingest } from "@/lib/rag/ingest";
 
 const DOCUMENT_TYPES = [
@@ -128,6 +135,37 @@ export async function POST(request: Request) {
       collectionId = existingChat.collectionId;
     }
 
+    const contentHash = isDocument
+      ? createHash("sha256").update(Buffer.from(fileBuffer)).digest("hex")
+      : null;
+
+    // Same bytes already indexed for this user: link the existing resource
+    // instead of storing, parsing and embedding the file again.
+    if (isDocument && contentHash && collectionId) {
+      const reusable = await findReusableDocumentResource({
+        userId: session.user.id,
+        contentHash,
+        pipelineVersion: RAG_PIPELINE_VERSION,
+      });
+      if (reusable) {
+        await linkResourceToCollection({
+          userId: session.user.id,
+          collectionId,
+          resourceId: reusable.id,
+        });
+        return NextResponse.json({
+          url: `/api/resources/${reusable.id}/content`,
+          pathname: filename,
+          contentType: file.type,
+          isDocument: true,
+          resourceId: reusable.id,
+          collectionId,
+          status: "ready",
+          deduplicated: true,
+        });
+      }
+    }
+
     const pathname = `${session.user.id}/${crypto.randomUUID()}-${filename}`;
     const privateBlobToken = process.env.PRIVATE_BLOB_READ_WRITE_TOKEN;
     if (isDocument && !privateBlobToken) {
@@ -170,9 +208,7 @@ export async function POST(request: Request) {
           fileType,
           mimeType: file.type,
           fileSize: file.size,
-          contentHash: createHash("sha256")
-            .update(Buffer.from(fileBuffer))
-            .digest("hex"),
+          contentHash: contentHash as string,
           buffer: fileBuffer,
         });
       } catch (error) {
@@ -188,6 +224,7 @@ export async function POST(request: Request) {
         contentType: file.type,
         isDocument: true,
         resourceId,
+        collectionId,
         status: "queued",
       });
     }
